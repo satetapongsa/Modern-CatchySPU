@@ -62,6 +62,51 @@ export default function Dashboard() {
   const [perfHistory, setPerfHistory] = useState<any[]>([])
   const [isSimulating, setIsSimulating] = useState(false)
   const [networkLogs, setNetworkLogs] = useState<any[]>([])
+  const [servers, setServers] = useState<any[]>([
+    { id: 'SERVER NODE 1', status: 'online', load: 32.4, region: 'SOUTH_A2' },
+    { id: 'SERVER NODE 2', status: 'online', load: 45.1, region: 'WEST_C4' },
+    { id: 'SERVER NODE 3', status: 'online', load: 12.8, region: 'NORTH_B1' }
+  ])
+
+  // Global Handlers
+  const handleMassSimulation = async (count: number) => {
+    setIsSimulating(true)
+    const promise = fetch('/api/simulate-traffic', { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ count })
+    })
+    
+    toast.promise(promise, {
+      loading: `Injecting ${count.toLocaleString()} Peak Load Ingress...`,
+      success: `AI Optimized ${count} sessions successfully.`,
+      error: 'Simulation failed. Check API connectivity.',
+    })
+
+    try {
+      await promise
+    } finally {
+      setIsSimulating(false)
+    }
+  }
+
+  const handleSimulateFailure = () => {
+    const targetIdx = Math.floor(Math.random() * 3)
+    setServers(prev => prev.map((s, i) => 
+      i === targetIdx ? { ...s, status: s.status === 'online' ? 'offline' : 'online' } : s
+    ))
+    
+    const wasOnline = servers[targetIdx].status === 'online'
+    if (wasOnline) {
+      toast.error(`CRITICAL: ${servers[targetIdx].id} Infrastructure Failure!`, {
+        description: 'AI Rerouting registration traffic to healthy nodes...'
+      })
+    } else {
+      toast.success(`RECOVERY: ${servers[targetIdx].id} Restored.`, {
+        description: 'Synchronizing shard records and re-balancing ingress...'
+      })
+    }
+  }
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -761,11 +806,22 @@ export default function Dashboard() {
               </div>
             )}
 
-            {activeTab === "Diagnostics" && <DiagnosticsView isSimulating={isSimulating} setIsSimulating={setIsSimulating} />}
-            {activeTab === "Data Center" && <DataCenterView isSimulating={isSimulating} />}
+            {activeTab === "Diagnostics" && (
+              <DiagnosticsView 
+                isSimulating={isSimulating} 
+                setIsSimulating={setIsSimulating} 
+                onMassSimulation={handleMassSimulation} 
+              />
+            )}
+            {activeTab === "Data Center" && <DataCenterView isSimulating={isSimulating} servers={servers} setServers={setServers} />}
             {activeTab === "Network" && <NetworkView logs={networkLogs} />}
             {activeTab === "Security" && <SecurityView />}
-            {activeTab === "Settings" && <SettingsView />}
+            {activeTab === "Settings" && (
+              <SettingsView 
+                onMassSimulation={handleMassSimulation} 
+                onSimulateFailure={handleSimulateFailure} 
+              />
+            )}
           </div>
         </div>
       </div>
@@ -797,7 +853,15 @@ function NavItem({
   )
 }
 
-function DiagnosticsView({ isSimulating, setIsSimulating }: { isSimulating: boolean, setIsSimulating: (v: boolean) => void }) {
+function DiagnosticsView({ 
+  isSimulating, 
+  setIsSimulating, 
+  onMassSimulation 
+}: { 
+  isSimulating: boolean, 
+  setIsSimulating: (v: boolean) => void,
+  onMassSimulation: (count: number) => void
+}) {
   const [faculty, setFaculty] = useState('ICT')
   const [studentId, setStudentId] = useState('')
   const [regResult, setRegResult] = useState<any>(null)
@@ -814,28 +878,9 @@ function DiagnosticsView({ isSimulating, setIsSimulating }: { isSimulating: bool
     toast.success("Simulation Request Sent")
   }
 
-  const handleMassSimulation = async (count: number) => {
-    setIsSimulating(true)
-    const promise = fetch('/api/simulate-traffic', { 
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ count })
-    })
-    
-    toast.promise(promise, {
-      loading: `Simulating ${count.toLocaleString()} concurrent registrations...`,
-      success: (res: any) => `Simulation for ${count} complete!`,
-      error: 'Simulation failed',
-    })
-
-    try {
-      const res = await promise
-      const data = await res.json()
-      // Refresh distributions
-      fetchDistributions()
-    } finally {
-      setIsSimulating(false)
-    }
+  const handleMassSimulationWrapper = async (count: number) => {
+    await onMassSimulation(count)
+    fetchDistributions()
   }
 
   const fetchDistributions = async () => {
@@ -920,7 +965,7 @@ function DiagnosticsView({ isSimulating, setIsSimulating }: { isSimulating: bool
                     <div key={count} className="space-y-2">
                        <div className="text-[10px] text-center text-slate-500 font-mono uppercase tracking-tighter">Level {count === 1000 ? 'I' : count === 3000 ? 'II' : 'III'}</div>
                        <Button 
-                         onClick={() => handleMassSimulation(count)} 
+                         onClick={() => handleMassSimulationWrapper(count)} 
                          disabled={isSimulating}
                          className={`w-full py-6 font-bold text-lg border-2 bg-transparent ${
                            count === 1000 ? 'border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10' : 
@@ -995,8 +1040,15 @@ function DiagnosticsView({ isSimulating, setIsSimulating }: { isSimulating: bool
   )
 }
 
-function DataCenterView({ isSimulating }: { isSimulating: boolean }) {
-  const [servers, setServers] = useState<any[]>([])
+function DataCenterView({ 
+  isSimulating, 
+  servers, 
+  setServers 
+}: { 
+  isSimulating: boolean, 
+  servers: any[], 
+  setServers: (s: any[]) => void 
+}) {
   const [serverDistribution, setServerDistribution] = useState<any[]>([])
   const [aiData, setAiData] = useState<any>(null)
   
@@ -1451,67 +1503,71 @@ function SecurityView() {
   )
 }
 
-function SettingsView() {
+function SettingsView({ 
+  onMassSimulation, 
+  onSimulateFailure 
+}: { 
+  onMassSimulation: (count: number) => void,
+  onSimulateFailure: () => void 
+}) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <Card className="bg-slate-900/50 border-slate-700/50">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <Card className="bg-slate-900/50 border-slate-700/50 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle>System Preferences</CardTitle>
+          <CardTitle className="text-slate-100 text-lg">System Preferences</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium">Dark Mode</div>
-                <div className="text-xs text-slate-500">Automatically adjust theme based on time</div>
-              </div>
-              <Switch defaultChecked />
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-sm text-slate-200">Dark Mode</Label>
+              <div className="text-xs text-slate-500">Automatically adjust theme based on time</div>
             </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium">Auto-Update</div>
-                <div className="text-xs text-slate-500">Keep Nexus OS on the cutting edge</div>
-              </div>
-              <Switch defaultChecked />
+            <Switch defaultChecked />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-sm text-slate-200">Auto-Update</Label>
+              <div className="text-xs text-slate-500">Keep Nexus OS on the cutting edge</div>
             </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium">Telemetry</div>
-                <div className="text-xs text-slate-500">Send anonymous usage data to Nexus Core</div>
-              </div>
-              <Switch />
+            <Switch defaultChecked />
+          </div>
+          <div className="flex items-center justify-between opacity-50">
+            <div className="space-y-0.5">
+              <Label className="text-sm text-slate-200">Telemetry</Label>
+              <div className="text-xs text-slate-500">Send anonymous usage data to Nexus Core</div>
             </div>
+            <Switch />
           </div>
         </CardContent>
       </Card>
 
-      <Card className="bg-slate-900/50 border-slate-700/50 border-blue-500/20">
+      <Card className="bg-slate-900/50 border-slate-700/50 border-blue-500/20 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle className="text-blue-400">Simulation Controls</CardTitle>
+          <CardTitle className="text-blue-400 text-lg flex items-center">
+            <Activity className="mr-2 h-5 w-5" />
+            Simulation Controls
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-           <div className="space-y-2">
-             <p className="text-xs text-slate-400">Manually trigger backend events to test architecture resilience.</p>
+          <p className="text-xs text-slate-500 mb-4 font-light">Manually trigger backend events to test architecture resilience.</p>
+          <div className="space-y-3">
              <Button 
                variant="outline" 
-               className="w-full justify-start text-xs border-slate-700" 
-               onClick={() => toast.warning("Simulating Database Shard A Failure...")}
+               className="w-full justify-start text-[10px] border-slate-700 h-10 hover:bg-rose-500/10 hover:border-rose-500 transition-all font-bold tracking-widest uppercase"
+               onClick={onSimulateFailure}
              >
-               <CircleOff className="mr-2 h-4 w-4 text-red-500" />
+               <CircleOff className="mr-3 h-4 w-4 text-red-500" />
                Simulate Shard Failure
              </Button>
              <Button 
                variant="outline" 
-               className="w-full justify-start text-xs border-slate-700"
-               onClick={() => toast.promise(new Promise(r => setTimeout(r, 1500)), {
-                 loading: 'Generating artificial peak traffic...',
-                 success: 'Traffic Injected. AI Auto-scaling engaged.',
-               })}
+               className="w-full justify-start text-[10px] border-slate-700 h-10 hover:bg-amber-500/10 hover:border-amber-500 transition-all font-bold tracking-widest uppercase"
+               onClick={() => onMassSimulation(5000)}
              >
-               <Zap className="mr-2 h-4 w-4 text-amber-500" />
+               <Zap className="mr-3 h-4 w-4 text-amber-500" />
                Inject Peak Load (AI Test)
              </Button>
-           </div>
+          </div>
         </CardContent>
       </Card>
     </div>
