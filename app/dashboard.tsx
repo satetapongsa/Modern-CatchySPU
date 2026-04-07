@@ -1147,7 +1147,7 @@ function DataCenterView({
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-bold flex items-center space-x-2">
                 <Database className="h-4 w-4 text-cyan-400" />
-                <span className="bg-gradient-to-r from-slate-100 to-slate-400 bg-clip-text text-transparent">SERVER NODE {idx + 1}</span>
+                <span className="bg-gradient-to-r from-slate-100 to-slate-400 bg-clip-text text-transparent">SN {idx + 1}</span>
               </CardTitle>
               <div className="text-[10px] text-cyan-400/50 font-mono tracking-widest uppercase">Primary Infrastructure Unit</div>
             </CardHeader>
@@ -1186,7 +1186,7 @@ function DataCenterView({
           <CardHeader>
             <CardTitle className="text-sm font-black flex items-center text-cyan-400">
                <Activity className="mr-2 h-4 w-4" />
-               LIVE INFRASTRUCTURE ANALYTICS (SERVER NODES 1-3)
+               LIVE INFRASTRUCTURE ANALYTICS (SN 1-3)
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -1194,7 +1194,13 @@ function DataCenterView({
                 <ResponsiveContainer width="100%" height="100%">
                    <BarChart data={serverDistribution}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                      <XAxis dataKey="name" stroke="#475569" fontSize={10} tickLine={false} />
+                     <XAxis
+                       dataKey="name"
+                       stroke="#475569"
+                       fontSize={10}
+                       tickLine={false}
+                       tickFormatter={(value) => String(value).replace('SERVER NODE', 'SN')}
+                     />
                       <YAxis stroke="#475569" fontSize={10} tickLine={false} />
                       <ReTooltip 
                         contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }}
