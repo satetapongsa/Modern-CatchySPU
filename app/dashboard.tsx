@@ -1052,7 +1052,7 @@ function DiagnosticsView({
                  </div>
                  <div>
                    <Label className="text-[10px] text-slate-500 dark:text-slate-500 uppercase tracking-wider">Academic Course</Label>
-                   <input value={course} onChange={e => setCourse(e.target.value)} placeholder="e.g. CSC101 - Intro to AI" className="w-full bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-lg p-2.5 text-sm mt-1 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600" />
+                   <input value={course} onChange={e => setCourse(e.target.value)} placeholder="e.g. CSC101 - Intro to AI" className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg p-2.5 text-sm mt-1 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all text-slate-100 placeholder:text-slate-600" />
                  </div>
               </div>
               <Button onClick={handleRegister} className="w-full bg-cyan-600 hover:bg-cyan-700 font-bold shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all">EXECUTE ROUND-ROBIN DISTRIBUTION</Button>
