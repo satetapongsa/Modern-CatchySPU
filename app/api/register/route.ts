@@ -3,14 +3,15 @@ import { getStaggeredSlot, tickSimulation, createStudentRecord } from "@/lib/sim
 
 export async function POST(req: Request) {
   try {
-    const { faculty, studentId, name } = await req.json()
+    const { faculty, studentId, name, course } = await req.json()
     
     // Simulate some logic
     tickSimulation()
     const student = await createStudentRecord({ 
       studentId, 
       faculty, 
-      name: name || `Student ${studentId}` 
+      name: name || `Student ${studentId}`,
+      course: course
     })
     
     return NextResponse.json({

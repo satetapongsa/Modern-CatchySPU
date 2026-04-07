@@ -43,6 +43,14 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table"
 import { toast } from "sonner"
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer,
@@ -68,6 +76,21 @@ export default function Dashboard() {
     { id: 'SERVER NODE 3', status: 'online', load: 12.8, region: 'NORTH_B1' }
   ])
 
+  // Helper for random SPU IP
+  const generateSpuIp = () => `10.21.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
+
+  // Helper to add network logs
+  const addLog = (info: { id: string; ip?: string; status?: string }) => {
+    const newLog = {
+      id: info.id,
+      ip: info.ip || generateSpuIp(),
+      volume: (Math.random() * 5 + 0.1).toFixed(2),
+      timestamp: new Date().toLocaleTimeString(),
+      status: info.status || (Math.random() > 0.05 ? 'authorized' : 'flagged')
+    }
+    setNetworkLogs(prev => [newLog, ...prev.slice(0, 49)])
+  }
+
   // Global Handlers
   const handleMassSimulation = async (count: number) => {
     setIsSimulating(true)
@@ -85,6 +108,13 @@ export default function Dashboard() {
 
     try {
       await promise
+      // Generate some visual logs for mass simulation
+      const logCount = Math.min(10, Math.floor(count / 100))
+      for (let i = 0; i < logCount; i++) {
+        setTimeout(() => {
+          addLog({ id: `66${Math.floor(100000 + Math.random() * 899999)}` })
+        }, i * 200)
+      }
     } finally {
       setIsSimulating(false)
     }
@@ -160,26 +190,8 @@ export default function Dashboard() {
     return () => clearInterval(interval)
   }, [])
 
-  // Network activity background simulator (Persistent)
-  useEffect(() => {
-    const generateLog = () => {
-      const id = `66${Math.floor(100000 + Math.random() * 899999)}`
-      const ip = `10.21.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
-      const vol = (Math.random() * 5 + 0.1).toFixed(2)
-      const newLog = {
-        id,
-        ip,
-        volume: vol,
-        timestamp: new Date().toLocaleTimeString(),
-        status: Math.random() > 0.1 ? 'authorized' : 'flagged'
-      }
-      setNetworkLogs(prev => [newLog, ...prev.slice(0, 49)])
-    }
-
-    const interval = setInterval(generateLog, 5000)
-    generateLog() // Initial call
-    return () => clearInterval(interval)
-  }, [])
+  // Network logs are now only generated on actual registration events (manual or mass simulation)
+  // Background simulator removed to keep the surveillance display silent until activity occurs.
 
   // Particle effect
   useEffect(() => {
@@ -267,9 +279,9 @@ export default function Dashboard() {
     }
   }, [])
 
-  // Toggle theme
+  // Toggle theme - Disabled for original dark look
   const toggleTheme = () => {
-    setTheme(theme === "dark" ? "light" : "dark")
+    setTheme("dark")
   }
 
   // Format time
@@ -291,9 +303,58 @@ export default function Dashboard() {
     })
   }
 
+  // Handle student data backup
+  const handleBackup = async () => {
+    const backupToast = toast.loading("Preparing student data backup...")
+    try {
+      const res = await fetch('/api/all-students')
+      if (!res.ok) throw new Error("Failed to fetch student data")
+      
+      const students = await res.json()
+      
+      if (!students || students.length === 0) {
+        toast.error("No student records found to backup", { id: backupToast })
+        return
+      }
+
+      const header = `MODERN&CATCHY SPU // STUDENT REGISTRATION BACKUP\n` +
+                     `GENERATED: ${new Date().toLocaleString()}\n` +
+                     `TOTAL RECORDS: ${students.length}\n` +
+                     `SOURCE: SUPABASE 100%\n` +
+                     `================================================================================\n\n`
+      
+      const content = students.map((s: any, idx: number) => 
+        `[${(idx + 1).toString().padStart(4, '0')}] ` +
+        `ID: ${s.studentId.padEnd(12)} | ` +
+        `NAME: ${s.name.padEnd(25)} | ` +
+        `FACULTY: ${s.faculty.padEnd(15)} | ` +
+        `COURSE: ${s.course.padEnd(20)} | ` +
+        `NODE: ${s.shardedDb.padEnd(15)} | ` +
+        `SLOT: ${s.slot}`
+      ).join('\n')
+
+      const finalContent = header + content
+      
+      const blob = new Blob([finalContent], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `MODERN_CATCHY_SPU_BACKUP_${new Date().toISOString().split('T')[0]}.txt`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      
+      toast.success(`Backup complete: ${students.length} records saved`, { id: backupToast })
+    } catch (err) {
+      console.error("Backup Error:", err)
+      toast.error("Backup failed: " + (err instanceof Error ? err.message : String(err)), { id: backupToast })
+    }
+  }
+
   return (
     <div
-      className={`${theme} min-h-screen bg-gradient-to-br from-black to-slate-900 text-slate-100 relative overflow-hidden`}
+      className="min-h-screen bg-slate-950 text-slate-100 relative overflow-hidden"
     >
       {/* Background particle effect */}
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full opacity-30" />
@@ -314,7 +375,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="container mx-auto p-4 relative z-10">
+      <div className="w-full max-w-full px-2 md:px-6 py-4 relative z-10">
         {/* Header */}
         <header className="flex items-center justify-between py-4 border-b border-slate-700/50 mb-6">
           <button 
@@ -324,7 +385,7 @@ export default function Dashboard() {
             <div className="h-9 w-9 relative rounded-lg overflow-hidden border border-slate-700/50 bg-slate-800/50 p-1">
               <img src="/icon.png" alt="Logo" className="h-full w-full object-contain" />
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent uppercase tracking-wider">
+            <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent uppercase tracking-wider">
               Modern&Catchy SPU
             </span>
           </button>
@@ -335,7 +396,7 @@ export default function Dashboard() {
               <input
                 type="text"
                 placeholder="Search systems..."
-                className="bg-transparent border-none focus:outline-none text-sm w-40 placeholder:text-slate-500"
+                className="bg-transparent border-none focus:outline-none text-sm w-40 placeholder:text-slate-500 text-slate-100"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     toast.info(`Searching for: ${e.currentTarget.value}`)
@@ -364,24 +425,6 @@ export default function Dashboard() {
                 </Tooltip>
               </TooltipProvider>
 
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={toggleTheme}
-                      className="text-slate-400 hover:text-slate-100"
-                    >
-                      {theme === "dark" ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Toggle theme</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
               <Avatar>
                 <AvatarImage src="/placeholder.svg?height=40&width=40" alt="User" />
                 <AvatarFallback className="bg-slate-700 text-cyan-500">CM</AvatarFallback>
@@ -394,9 +437,9 @@ export default function Dashboard() {
         <div className="grid grid-cols-12 gap-6">
           {/* Sidebar */}
           <div className="col-span-12 md:col-span-3 lg:col-span-2">
-            <Card className="bg-slate-900/50 border-slate-700/50 backdrop-blur-sm h-full">
+            <Card className="bg-slate-900/50 border-slate-700/50 backdrop-blur-sm h-full shadow-none border-t-0 border-b-0">
               <CardContent className="p-4">
-                <nav className="space-y-2">
+                <nav className="grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-col gap-2">
                   <NavItem
                     icon={Command}
                     label="Dashboard"
@@ -422,12 +465,6 @@ export default function Dashboard() {
                     onClick={() => setActiveTab("Network")}
                   />
                   <NavItem
-                    icon={Shield}
-                    label="Security"
-                    active={activeTab === "Security"}
-                    onClick={() => setActiveTab("Security")}
-                  />
-                  <NavItem
                     icon={Settings}
                     label="Settings"
                     active={activeTab === "Settings"}
@@ -435,7 +472,7 @@ export default function Dashboard() {
                   />
                 </nav>
 
-                <div className="mt-8 pt-6 border-t border-slate-700/50">
+                <div className="hidden md:block mt-8 pt-6 border-t border-slate-700/50">
                   <div className="text-xs text-slate-500 mb-2 font-mono">SYSTEM STATUS</div>
                   <div className="space-y-3">
                     <StatusItem label="Core Systems" value={systemStatus} color="cyan" />
@@ -770,7 +807,7 @@ export default function Dashboard() {
                           <ActionButton
                             icon={Download}
                             label="Backup"
-                            onClick={() => toast.info("Cloud backup initiated")}
+                            onClick={handleBackup}
                           />
                         </div>
                       </CardContent>
@@ -811,13 +848,15 @@ export default function Dashboard() {
                 isSimulating={isSimulating} 
                 setIsSimulating={setIsSimulating} 
                 onMassSimulation={handleMassSimulation} 
+                onAddLog={addLog}
               />
             )}
             {activeTab === "Data Center" && <DataCenterView isSimulating={isSimulating} servers={servers} setServers={setServers} />}
-            {activeTab === "Network" && <NetworkView logs={networkLogs} />}
-            {activeTab === "Security" && <SecurityView />}
+            {activeTab === "Network" && <NetworkView logs={networkLogs} perfHistory={perfHistory} networkStatus={networkStatus} />}
             {activeTab === "Settings" && (
               <SettingsView 
+                theme={theme}
+                setTheme={setTheme}
                 onMassSimulation={handleMassSimulation} 
                 onSimulateFailure={handleSimulateFailure} 
               />
@@ -856,32 +895,25 @@ function NavItem({
 function DiagnosticsView({ 
   isSimulating, 
   setIsSimulating, 
-  onMassSimulation 
+  onMassSimulation,
+  onAddLog
 }: { 
   isSimulating: boolean, 
   setIsSimulating: (v: boolean) => void,
-  onMassSimulation: (count: number) => void
+  onMassSimulation: (count: number) => void,
+  onAddLog: (info: { id: string; ip?: string; status?: string }) => void
 }) {
-  const [faculty, setFaculty] = useState('ICT')
+  const [faculty, setFaculty] = useState('IT')
   const [studentId, setStudentId] = useState('')
+  const [studentName, setStudentName] = useState('')
+  const [course, setCourse] = useState('')
   const [regResult, setRegResult] = useState<any>(null)
+  
   const [distributionData, setDistributionData] = useState<any[]>([])
-
-  const handleRegister = async () => {
-    if (!studentId) return toast.error("Please enter Student ID")
-    const res = await fetch('/api/register', {
-      method: 'POST',
-      body: JSON.stringify({ faculty, studentId })
-    })
-    const data = await res.json()
-    setRegResult(data)
-    toast.success("Simulation Request Sent")
-  }
-
-  const handleMassSimulationWrapper = async (count: number) => {
-    await onMassSimulation(count)
-    fetchDistributions()
-  }
+  const [shardData, setShardData] = useState<any[]>([])
+  const [selectedShard, setSelectedShard] = useState<string | null>(null)
+  const [shardLogs, setShardLogs] = useState<any[]>([])
+  const [isLogsLoading, setIsLogsLoading] = useState(false)
 
   const fetchDistributions = async () => {
     const res = await fetch('/api/simulate-traffic')
@@ -897,21 +929,93 @@ function DiagnosticsView({
       { id: 'CommArts', label: 'Comm Arts' }
     ]
 
-    // Map existing data and ensure all 6 faculties are present in result
     const chartData = faculties.map(f => {
       const match = data.facultyDistribution.find((d: any) => d.faculty === f.id)
-      return {
-        name: f.label,
-        count: match ? match._count : 0
-      }
+      return { name: f.label, count: match ? match._count : 0 }
     })
 
+    const shardChartData = data.shardDistribution.map((d: any) => ({
+      name: d.shardedDb,
+      count: d._count
+    }))
+
     setDistributionData(chartData)
+    setShardData(shardChartData)
+  }
+
+  const fetchShardLogs = async (shardName: string) => {
+    setIsLogsLoading(true)
+    try {
+      const res = await fetch(`/api/simulate-traffic?shard=${encodeURIComponent(shardName)}`)
+      const data = await res.json()
+      setShardLogs(data.shardStudents || [])
+    } catch (err) {
+      console.error("Failed to fetch shard logs", err)
+    } finally {
+      setIsLogsLoading(false)
+    }
   }
 
   useEffect(() => {
     fetchDistributions()
+    const interval = setInterval(fetchDistributions, 10000)
+    return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    if (selectedShard) {
+      fetchShardLogs(selectedShard)
+    }
+  }, [selectedShard])
+
+  const handleRegister = async () => {
+    if (!studentId || !studentName) return toast.error("Please enter Student ID and Name")
+    
+    const promise = fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        faculty, 
+        studentId, 
+        name: studentName,
+        course: course || 'N/A'
+      })
+    })
+
+    toast.promise(promise, {
+      loading: 'Routing registration to optimal node...',
+      success: (res: any) => 'Student registered successfully',
+      error: 'Registration failed'
+    })
+
+    const res = await promise
+    const data = await res.json()
+    
+    if (data.error === 'DUPLICATE_ID') {
+      toast.error("Registration Rejected", {
+        description: data.message || "This Student ID is already registered in the system."
+      })
+      return
+    }
+
+    setRegResult(data)
+    
+    if (data.success) {
+      toast.success(`Success: Data sharded to ${data.shardedDb}`, {
+        description: `Student ${studentName} assigned to registration slot: ${data.assignedSlot}`
+      })
+      onAddLog({ id: studentId })
+      if (selectedShard === data.shardedDb && selectedShard) fetchShardLogs(selectedShard)
+      setStudentId(''); setStudentName(''); setCourse('');
+      fetchDistributions()
+    }
+  }
+
+  const handleMassSimulationWrapper = async (count: number) => {
+    await onMassSimulation(count)
+    setTimeout(fetchDistributions, 2000)
+    if (selectedShard) setTimeout(() => fetchShardLogs(selectedShard), 3000)
+  }
 
   return (
     <div className="space-y-6">
@@ -925,117 +1029,140 @@ function DiagnosticsView({
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-300">Registration Simulator</h3>
-              <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-slate-300">Manual Entry (Database Direct)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div>
-                   <Label className="text-xs text-slate-500">Student ID (Start with 66)</Label>
-                   <input 
-                     value={studentId} 
-                     onChange={e => setStudentId(e.target.value)} 
-                     placeholder="e.g. 66010123" 
-                     className="w-full bg-slate-800/50 border border-slate-700 rounded p-2 text-sm mt-1" 
-                   />
+                   <Label className="text-[10px] text-slate-500 dark:text-slate-500 uppercase tracking-wider">Full Name</Label>
+                   <input value={studentName} onChange={e => setStudentName(e.target.value)} placeholder="e.g. John Doe SPU" className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg p-2.5 text-sm mt-1 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all text-slate-100 placeholder:text-slate-600" />
                  </div>
                  <div>
-                   <Label className="text-xs text-slate-500">Faculty</Label>
-                   <select 
-                      value={faculty} 
-                      onChange={e => setFaculty(e.target.value)}
-                      className="w-full bg-slate-800/50 border border-slate-700 rounded p-2 text-sm mt-1"
-                   >
-                     <option value="IT">IT (Information Technology)</option>
+                   <Label className="text-[10px] text-slate-500 dark:text-slate-500 uppercase tracking-wider">Student ID</Label>
+                   <input value={studentId} onChange={e => setStudentId(e.target.value)} placeholder="e.g. 66010123" className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg p-2.5 text-sm mt-1 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all text-slate-100 placeholder:text-slate-600" />
+                 </div>
+                 <div>
+                   <Label className="text-[10px] text-slate-500 dark:text-slate-500 uppercase tracking-wider">Faculty Selection</Label>
+                   <select value={faculty} onChange={e => setFaculty(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg p-2.5 text-sm mt-1 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all text-slate-100">
+                     <option value="IT">ICT (Information Tech)</option>
                      <option value="Engineering">Engineering</option>
-                     <option value="Business">Business Administration</option>
+                     <option value="Business">Business Admin</option>
                      <option value="Accountancy">Accountancy</option>
                      <option value="DigitalMedia">Digital Media</option>
-                     <option value="CommArts">Communication Arts</option>
+                     <option value="CommArts">Comm Arts</option>
                    </select>
                  </div>
-                 <Button onClick={handleRegister} className="w-full bg-cyan-600 hover:bg-cyan-700 font-bold">EXECUTE AI STAGGERED LOGIC</Button>
+                 <div>
+                   <Label className="text-[10px] text-slate-500 dark:text-slate-500 uppercase tracking-wider">Academic Course</Label>
+                   <input value={course} onChange={e => setCourse(e.target.value)} placeholder="e.g. CSC101 - Intro to AI" className="w-full bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700/50 rounded-lg p-2.5 text-sm mt-1 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600" />
+                 </div>
               </div>
-              
-              <div className="mt-8 pt-6 border-t border-slate-700/50">
-                <h3 className="text-sm font-semibold text-amber-500 flex items-center mb-6">
-                  <Zap className="mr-2 h-4 w-4" />
-                  AI-Managed Stress Test Controller
-                </h3>
-                
+              <Button onClick={handleRegister} className="w-full bg-cyan-600 hover:bg-cyan-700 font-bold shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all">EXECUTE ROUND-ROBIN DISTRIBUTION</Button>
+              {regResult && (
+                <div className="p-3 bg-slate-950/50 border border-cyan-500/20 rounded-lg animate-in slide-in-from-top-2">
+                   <div className="flex items-center justify-between"><span className="text-xs text-slate-400">Assigned Ingress Node:</span><Badge className="bg-cyan-500/10 text-cyan-400 border-cyan-500/20">{regResult.shardedDb}</Badge></div>
+                   <div className="text-[10px] text-slate-500 mt-1 font-mono tracking-tighter">SUCCESS_TOKEN: {Math.random().toString(36).substring(7).toUpperCase()}</div>
+                </div>
+              )}
+            </div>
+            <div className="mt-8 pt-6 border-t border-slate-700/50">
+                <h3 className="text-sm font-semibold text-amber-500 flex items-center mb-6"><Zap className="mr-2 h-4 w-4" />AI-Managed Stress Test Controller</h3>
                 <div className="grid grid-cols-3 gap-3">
                   {[1000, 3000, 5000].map((count) => (
                     <div key={count} className="space-y-2">
                        <div className="text-[10px] text-center text-slate-500 font-mono uppercase tracking-tighter">Level {count === 1000 ? 'I' : count === 3000 ? 'II' : 'III'}</div>
-                       <Button 
-                         onClick={() => handleMassSimulationWrapper(count)} 
-                         disabled={isSimulating}
-                         className={`w-full py-6 font-bold text-lg border-2 bg-transparent ${
-                           count === 1000 ? 'border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10' : 
-                           count === 3000 ? 'border-purple-500/50 text-purple-400 hover:bg-purple-500/10' : 
-                           'border-rose-500/50 text-rose-400 hover:bg-rose-500/10'
-                         }`}
-                       >
-                         {count.toLocaleString()}
-                       </Button>
+                       <Button onClick={() => handleMassSimulationWrapper(count)} disabled={isSimulating} className={`w-full py-6 font-bold text-lg border-2 bg-transparent ${count === 1000 ? 'border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10' : count === 3000 ? 'border-purple-500/50 text-purple-400 hover:bg-purple-500/10' : 'border-rose-500/50 text-rose-400 hover:bg-rose-500/10'}`}>{count.toLocaleString()}</Button>
                     </div>
                   ))}
                 </div>
-                
-                <Button 
-                   onClick={async () => {
-                     if (confirm("🚨 WARNING: This will WIPE all infrastructure records and restart simulation. Proceed?")) {
-                        const res = await fetch('/api/reset-db', { method: 'POST' })
-                        const data = await res.json()
-                        if (data.success) {
-                           toast.success("Infrastructure Cleared (Clean State)")
-                           fetchDistributions()
-                        } else {
-                           toast.error("Cleanup Failed: " + data.error)
-                        }
-                     }
-                   }}
-                   variant="ghost" 
-                   className="w-full mt-6 text-[10px] text-rose-500 border border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-400 font-mono tracking-widest uppercase"
-                >
-                   WIPE & RE-OPTIMIZE DATABASE (CLEAN STATE)
-                </Button>
-
-                {isSimulating && (
-                  <div className="mt-6 flex items-center justify-center space-x-3 text-cyan-400 animate-pulse">
-                    <Activity className="h-5 w-5 animate-spin-slow" />
-                    <span className="text-xs font-mono uppercase tracking-widest font-bold">AI Optimizing Distribution...</span>
-                  </div>
-                )}
-              </div>
+                <Button onClick={async () => { if (confirm("🚨 WARNING: This will WIPE all infrastructure records and restart simulation. Proceed?")) { const res = await fetch('/api/reset-db', { method: 'POST' }); const data = await res.json(); if (data.success) { toast.success("Infrastructure Cleared (Clean State)"); fetchDistributions() } else { toast.error("Cleanup Failed: " + data.error) } } }} variant="ghost" className="w-full mt-6 text-[10px] text-rose-500 border border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-400 font-mono tracking-widest uppercase">WIPE & RE-OPTIMIZE DATABASE (CLEAN STATE)</Button>
+                {isSimulating && (<div className="mt-6 flex items-center justify-center space-x-3 text-cyan-400 animate-pulse"><Activity className="h-5 w-5 animate-spin-slow" /><span className="text-xs font-mono uppercase tracking-widest font-bold">AI Optimizing Distribution...</span></div>)}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-slate-900/50 border-slate-700/50 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold text-slate-300">Traffic Distribution (By Faculty)</CardTitle>
-          </CardHeader>
-          <CardContent>
-             <div className="h-64 w-full">
+        <div className="md:col-span-1 space-y-6">
+          <Card className="bg-slate-900/50 border-slate-700/50 backdrop-blur-sm">
+            <CardHeader className="pb-2"><CardTitle className="text-xs font-mono uppercase tracking-[0.2em] text-cyan-600 dark:text-cyan-400">Traffic Distribution (By Faculty)</CardTitle></CardHeader>
+            <CardContent>
+              <div className="h-48 mt-2">
                 <ResponsiveContainer width="100%" height="100%">
-                   <BarChart data={distributionData} margin={{ bottom: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={9} interval={0} tick={{ fill: '#94a3b8' }} />
-                      <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} />
-                      <ReTooltip 
-                         cursor={{ fill: '#1e293b', opacity: 0.4 }}
-                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px' }} 
-                      />
-                      <Bar dataKey="count" radius={[2, 2, 0, 0]}>
-                          {distributionData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={['#06b6d4', '#a855f7', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'][index % 6]} />
-                          ))}
-                       </Bar>
-                   </BarChart>
+                  <BarChart data={distributionData}><CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} /><XAxis dataKey="name" stroke="#475569" fontSize={9} tickLine={false} interval={0} /><YAxis stroke="#475569" fontSize={10} tickLine={false} /><ReTooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }} itemStyle={{ color: '#22d3ee' }} /><Bar dataKey="count" radius={[4, 4, 0, 0]}>{distributionData.map((entry, index) => (<Cell key={`cell-${index}`} fill={['#06b6d4', '#a855f7', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'][index % 6]} />))}</Bar></BarChart>
                 </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-slate-900/50 border-slate-700/50 backdrop-blur-sm relative overflow-hidden group">
+            <div className={`absolute top-0 left-0 w-1 h-full bg-cyan-500 transition-all duration-500 ${selectedShard ? 'opacity-100' : 'opacity-0'}`} />
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-mono uppercase tracking-[0.2em] text-cyan-600 dark:text-cyan-400">Infrastructure Distribution (By Server)</CardTitle>
+              <p className="text-[10px] text-slate-500 dark:text-slate-500">Pick a node to examine drill-down logs</p>
+            </CardHeader>
+            <CardContent>
+              <div className="h-48 mt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={shardData} onClick={(data) => { if (data && data.activeLabel) { setSelectedShard(data.activeLabel); } }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                    <XAxis dataKey="name" stroke="#475569" fontSize={10} tickLine={false} tickFormatter={(val) => val.replace('SERVER NODE ', 'SN-')} />
+                    <YAxis stroke="#475569" fontSize={10} tickLine={false} />
+                    <ReTooltip cursor={{ fill: 'rgba(6, 182, 212, 0.1)' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#ffffff' }} itemStyle={{ color: '#ffffff' }} />
+                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                      {shardData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={selectedShard === entry.name ? '#22d3ee' : '#0f172a'} stroke={selectedShard === entry.name ? '#22d3ee' : '#334155'} strokeWidth={2} className="cursor-pointer hover:opacity-80 transition-opacity" />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {selectedShard && (
+        <Card className="mt-6 bg-slate-900/50 border-slate-700/50 backdrop-blur-sm relative overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none"><Database className="h-24 w-24 text-cyan-500" /></div>
+          <CardHeader className="border-b border-slate-800 pb-4">
+             <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-mono uppercase tracking-[0.1em] text-cyan-600 dark:text-cyan-400">Infrastructure Traffic Logs: {selectedShard}</CardTitle>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-500 font-mono mt-1">Showing 10 most recent ingestion units</p>
+                </div>
+                <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-900 dark:hover:text-slate-300 h-8 font-bold" onClick={() => setSelectedShard(null)}>Clear Selection</Button>
              </div>
-             
+          </CardHeader>
+          <CardContent className="p-0">
+             <div className="relative">
+                {isLogsLoading && (<div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm z-10 flex items-center justify-center"><RefreshCcw className="h-6 w-6 text-cyan-500 animate-spin" /></div>)}
+                <Table>
+                   <TableHeader className="bg-slate-50 dark:bg-slate-950/50">
+                      <TableRow className="border-slate-200 dark:border-slate-800 hover:bg-transparent">
+                         <TableHead className="text-[10px] font-mono text-slate-500 dark:text-slate-500 font-bold">RESIDENCY_ID</TableHead>
+                         <TableHead className="text-[10px] font-mono text-slate-500 dark:text-slate-500 font-bold">SUBJECT_NAME</TableHead>
+                         <TableHead className="text-[10px] font-mono text-slate-500 dark:text-slate-500 font-bold">FACULTY_UNIT</TableHead>
+                         <TableHead className="text-[10px] font-mono text-slate-500 dark:text-slate-500 font-bold">COURSE_ENROLLED</TableHead>
+                         <TableHead className="text-[10px] font-mono text-slate-500 dark:text-slate-500 font-bold text-right">INGRESS_SLOT</TableHead>
+                      </TableRow>
+                   </TableHeader>
+                   <TableBody>
+                      {shardLogs.length === 0 && !isLogsLoading ? (
+                        <TableRow><TableCell colSpan={5} className="h-24 text-center text-slate-400 text-xs font-mono">NO ACTIVE RECORDS FOUND IN THIS SEGMENT</TableCell></TableRow>
+                      ) : (
+                        shardLogs.map((log) => (
+                          <TableRow key={log.studentId} className="border-slate-800 hover:bg-cyan-500/5 transition-colors">
+                            <TableCell className="font-mono text-cyan-400 text-xs">{log.studentId}</TableCell>
+                            <TableCell className="text-slate-300 text-xs font-medium uppercase">{log.name}</TableCell>
+                            <TableCell><Badge variant="outline" className="bg-slate-800 text-slate-400 border-slate-700 text-[9px] h-5">{log.faculty}</Badge></TableCell>
+                            <TableCell className="text-slate-500 text-[10px] italic">{log.course || 'GENERAL_EDUCATION'}</TableCell>
+                            <TableCell className="text-right font-mono text-slate-400 text-[10px]">{log.slot}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                   </TableBody>
+                </Table>
+             </div>
           </CardContent>
         </Card>
-      </div>
+      )}
     </div>
   )
 }
@@ -1089,7 +1216,7 @@ function DataCenterView({
   return (
     <div className="space-y-6">
       {/* Global Traffic Ingress Visualization */}
-      <Card className="bg-slate-900/60 border-slate-700/50 relative overflow-hidden">
+      <Card className="bg-slate-900/60 border-slate-700/50 relative overflow-hidden shadow-none">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(6,182,212,0.1),transparent)]" />
         <CardContent className="py-6">
           <div className="flex flex-col items-center justify-center space-y-4">
@@ -1139,45 +1266,60 @@ function DataCenterView({
 
       {/* Real-time SERVER Distribution (Vertical Bars) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {servers.map((server, idx) => (
-          <Card key={server.id} className="bg-slate-900/50 border-slate-700/50 relative overflow-hidden group hover:border-cyan-500/30 transition-all duration-500">
-            <div className={`absolute top-0 right-0 p-2 opacity-20 group-hover:opacity-100 transition-opacity`}>
-               <CircleOff className={`h-4 w-4 ${server.status === 'online' ? 'text-green-500' : 'text-amber-500'}`} />
-            </div>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-bold flex items-center space-x-2">
-                <Database className="h-4 w-4 text-cyan-400" />
-                <span className="bg-gradient-to-r from-slate-100 to-slate-400 bg-clip-text text-transparent">SN {idx + 1}</span>
-              </CardTitle>
-              <div className="text-[10px] text-cyan-400/50 font-mono tracking-widest uppercase">Primary Infrastructure Unit</div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-end justify-between space-x-4 h-32">
-                 <div className="flex-1 flex flex-col items-center justify-end h-full">
-                    <div className="text-[10px] text-slate-400 mb-1 font-mono">{server.load.toFixed(1)}%</div>
-                    <div className="w-full bg-slate-800 rounded-t-sm relative overflow-hidden group-hover:shadow-[0_0_15px_rgba(6,182,212,0.5)] transition-shadow duration-500" style={{ height: `${server.load}%` }}>
-                       <div className="absolute inset-0 bg-gradient-to-t from-cyan-600 to-cyan-400 animate-pulse-slow" />
-                       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20" />
-                    </div>
-                 </div>
-                 <div className="flex-1 space-y-3 text-[11px] py-1">
-                    <div className="flex justify-between border-b border-slate-800 pb-1">
-                      <span className="text-slate-500">Region</span>
-                      <span className="text-slate-300 font-mono">{server.region}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-slate-800 pb-1">
-                      <span className="text-slate-500">Node</span>
-                      <span className="text-green-400 font-mono">ACTIVE</span>
-                    </div>
-                    <div className="flex justify-between border-b border-slate-800 pb-1">
-                      <span className="text-slate-500">Records</span>
-                      <span className="text-cyan-400 font-bold">{serverDistribution.find(d => d.name === `SERVER NODE ${idx + 1}`)?.value || 0}</span>
-                    </div>
-                 </div>
+        {servers.map((server, idx) => {
+          const occupancy = serverDistribution.find(d => d.name === `SERVER NODE ${idx + 1}`)?.value || 0
+          const percentage = (occupancy / 10000) * 100
+          
+          return (
+            <Card key={server.id} className="bg-slate-900/50 border-slate-700/50 relative overflow-hidden group hover:border-cyan-500/30 transition-all duration-500">
+              <div className={`absolute top-0 right-1 p-2 opacity-20 group-hover:opacity-100 transition-opacity`}>
+                 <div className={`h-1.5 w-1.5 rounded-full ${server.status === 'online' ? 'bg-green-500' : 'bg-rose-500'} shadow-[0_0_8px_currentColor]`} />
               </div>
-            </CardContent>
-          </Card>
-        ))}
+              <CardHeader className="pb-1">
+                <CardTitle className="text-[11px] font-bold flex items-center space-x-2">
+                  <Database className="h-3 w-3 text-cyan-400" />
+                  <span className="tracking-widest">SERVER NODE {idx + 1}</span>
+                </CardTitle>
+                <div className="text-[9px] text-slate-500 font-mono">NODE_CAPACITY: 10,000 UNITS</div>
+              </CardHeader>
+              <CardContent className="pt-2">
+                <div className="flex flex-col space-y-4">
+                   <div className="flex items-end justify-between space-x-3 h-24">
+                      <div className="flex-1 flex flex-col items-center justify-end h-full">
+                         <div className="text-[9px] text-slate-500 mb-1 font-mono">{server.load.toFixed(1)}% LOAD</div>
+                         <div className="w-full bg-slate-800 rounded-sm relative overflow-hidden h-full max-h-[80%]" style={{ height: `${server.load}%` }}>
+                            <div className="absolute inset-0 bg-gradient-to-t from-cyan-600/80 to-cyan-400" />
+                         </div>
+                      </div>
+                      <div className="flex-1 space-y-2 text-[9px] py-1 border-l border-slate-800 pl-3">
+                         <div className="flex justify-between">
+                           <span className="text-slate-500">RESIDENCY</span>
+                           <span className="text-slate-200">TH-SPU-{idx+1}</span>
+                         </div>
+                         <div className="flex justify-between">
+                           <span className="text-slate-500">STATUS</span>
+                           <span className="text-cyan-400 font-bold">NOMINAL</span>
+                         </div>
+                      </div>
+                   </div>
+                   
+                   <div className="space-y-1.5">
+                      <div className="flex justify-between items-center text-[10px]">
+                         <span className="text-slate-400">Database Residency</span>
+                         <span className="text-cyan-400 font-mono">{occupancy.toLocaleString()} / 10,000</span>
+                      </div>
+                      <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                         <div 
+                           className={`h-full transition-all duration-1000 ${percentage > 90 ? 'bg-rose-500' : percentage > 70 ? 'bg-amber-500' : 'bg-cyan-500'}`}
+                           style={{ width: `${Math.min(100, percentage)}%` }} 
+                         />
+                      </div>
+                   </div>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1223,7 +1365,7 @@ function DataCenterView({
            <CardHeader>
              <CardTitle className="text-sm font-semibold flex items-center text-amber-500">
                 <Zap className="mr-2 h-4 w-4" />
-                AI CORE: NEXUS Engine
+                AI CORE: Modern&Catchy Engine
              </CardTitle>
            </CardHeader>
            <CardContent className="space-y-4">
@@ -1269,7 +1411,7 @@ function DataCenterView({
   )
 }
 
-function NetworkView({ logs }: { logs: any[] }) {
+function NetworkView({ logs, perfHistory, networkStatus }: { logs: any[], perfHistory: any[], networkStatus: number }) {
   const [trafficBars, setTrafficBars] = useState<number[]>([...Array(60)].map(() => Math.random() * 40 + 20))
 
   useEffect(() => {
@@ -1301,7 +1443,7 @@ function NetworkView({ logs }: { logs: any[] }) {
         ))}
       </div>
 
-      <Card className="bg-slate-900/60 border-slate-800 overflow-hidden shadow-2xl">
+      <Card className="bg-slate-900/60 border-slate-800 overflow-hidden">
         <div className="bg-slate-800/20 border-b border-slate-800 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
              <div className="flex space-x-1">
@@ -1321,25 +1463,47 @@ function NetworkView({ logs }: { logs: any[] }) {
         </div>
 
         <CardContent className="p-0">
-          <div className="h-40 bg-black/20 relative overflow-hidden flex items-end px-1 space-x-0.5">
-             {trafficBars.map((h, i) => (
-               <div 
-                 key={i} 
-                 className="flex-1 bg-gradient-to-t from-cyan-600/30 to-cyan-400/5 transition-all duration-1000 ease-in-out border-t border-cyan-500/20" 
-                 style={{ height: `${h}%` }} 
-               />
-             ))}
-             <div className="absolute inset-0 bg-[linear-gradient(rgba(15,23,42,0)_50%,rgba(15,23,42,0.8)_100%)] pointer-events-none" />
-             <div className="absolute top-4 right-6 text-[10px] text-slate-600 font-mono flex items-center">
-                <BarChart3 className="h-3 w-3 mr-2 opacity-50" />
-                BANDWIDTH FLOW (TX/RX)
+          <div className="h-48 bg-black/20 relative overflow-hidden">
+             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
+             <div className="absolute inset-0 p-4 pt-10">
+                <ResponsiveContainer width="100%" height="100%">
+                   <AreaChart data={perfHistory.slice(-20)}>
+                      <defs>
+                        <linearGradient id="networkFlow" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#22d3ee" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} opacity={0.3} />
+                      <XAxis dataKey="time" hide />
+                      <YAxis hide domain={[0, 100]} />
+                      <ReTooltip 
+                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px', fontSize: '10px' }}
+                         itemStyle={{ color: '#22d3ee' }}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="network" 
+                        stroke="#06b6d4" 
+                        strokeWidth={2}
+                        fillOpacity={1} 
+                        fill="url(#networkFlow)" 
+                        animationDuration={1500}
+                      />
+                   </AreaChart>
+                </ResponsiveContainer>
+             </div>
+             
+             <div className="absolute top-4 right-6 text-[10px] text-cyan-400/80 font-mono flex items-center bg-slate-900/60 backdrop-blur-sm px-2 py-1 rounded border border-cyan-500/20">
+                <div className="h-1.5 w-1.5 rounded-full bg-cyan-500 mr-2 animate-pulse" />
+                LIVE SURVEILLANCE FEED // BANDWIDTH: {networkStatus.toFixed(2)} MB/S
              </div>
           </div>
           
-          <div className="border-t border-slate-800">
+          <div className="border-t border-slate-800 transition-colors">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="text-[9px] text-slate-500 uppercase tracking-[0.2em] font-bold border-b border-slate-800/50 bg-slate-900/50">
+                <tr className="text-[9px] text-slate-500 uppercase tracking-[0.2em] font-black border-b border-slate-800/50 bg-slate-900/50">
                   <th className="px-6 py-4">Session Initiation</th>
                   <th className="px-6 py-4">Academic Entity (ID)</th>
                   <th className="px-6 py-4">Source Node (IP)</th>
@@ -1389,7 +1553,7 @@ function NetworkView({ logs }: { logs: any[] }) {
           </div>
         </CardContent>
         <div className="bg-slate-900/80 border-t border-slate-800 px-6 py-3 flex items-center justify-between">
-           <div className="text-[9px] text-slate-600 font-mono tracking-widest">NETWORK_NEXUS_OS_v4.2 // SECURITY_INSPECT: ENABLED</div>
+           <div className="text-[9px] text-slate-600 font-mono tracking-widest">NETWORK_MODERN_CATCHY_SPU_v4.2 // SECURITY_INSPECT: ENABLED</div>
            <div className="flex items-center text-[9px] text-slate-600 font-mono">
               <RefreshCcw className="h-3 w-3 mr-2 animate-spin-slow" />
               AUTO-REFRESH: 5.0s
@@ -1400,182 +1564,86 @@ function NetworkView({ logs }: { logs: any[] }) {
   )
 }
 
-function SecurityView() {
-  const [firewallActive, setFirewallActive] = useState(true)
-
-  return (
-    <div className="space-y-6 animate-in fade-in duration-700">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 bg-slate-900/50 border-slate-800 backdrop-blur-md">
-          <CardHeader className="border-b border-slate-800/50">
-            <div className="flex items-center justify-between">
-               <CardTitle className="text-sm font-bold flex items-center text-emerald-400">
-                 <Shield className="mr-2 h-4 w-4" />
-                 Active Defense Protocols
-               </CardTitle>
-               <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[9px]">ALPHA-LEVEL ACCESS</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-6 space-y-6">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {[
-                  { label: "Port Lockdown (80/443)", desc: "Restrict entry to verified IPs only", checked: true },
-                  { label: "Cookie Hardening", desc: "AES-256 encryption on all session chips", checked: true },
-                  { label: "Deep Packet Inspection", desc: "Real-time AI analysis of ingress payloads", checked: false },
-                  { label: "Anti-DDoS Shield", desc: "Cloudflare-grade traffic scrubbing", checked: true }
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center justify-between p-4 bg-slate-950/40 border border-slate-800 rounded-lg hover:border-slate-700 transition-colors">
-                    <div className="space-y-0.5">
-                       <div className="text-xs font-bold text-slate-200">{item.label}</div>
-                       <div className="text-[10px] text-slate-500">{item.desc}</div>
-                    </div>
-                    <Switch defaultChecked={item.checked} />
-                  </div>
-                ))}
-             </div>
-             
-             <div className="pt-4 border-t border-slate-800/50">
-                <div className="flex items-center justify-between mb-2">
-                   <span className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Global Encryption Strength</span>
-                   <span className="text-[10px] text-cyan-400 font-mono">99.9% SECURE</span>
-                </div>
-                <Progress value={95} className="h-1 bg-slate-800" />
-             </div>
-          </CardContent>
-        </Card>
-
-        <div className="space-y-6">
-           <Card className="bg-slate-900/50 border-slate-800">
-             <CardHeader className="pb-2">
-               <CardTitle className="text-[10px] text-slate-500 uppercase tracking-widest">Threat Interception</CardTitle>
-             </CardHeader>
-             <CardContent>
-                <div className="text-3xl font-black text-rose-500 font-mono">1,429</div>
-                <div className="text-[9px] text-slate-600 mt-1 flex items-center">
-                   <AlertCircle className="h-3 w-3 mr-1 text-rose-500 opacity-50" />
-                   Intrusions Blocked (Last 24h)
-                </div>
-             </CardContent>
-           </Card>
-
-           <Card className={`bg-slate-900/50 transition-all duration-500 border ${firewallActive ? 'border-emerald-500/30' : 'border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.1)]'}`}>
-             <CardHeader className="pb-2">
-               <CardTitle className="text-[10px] text-slate-500 uppercase tracking-widest">Firewall Integrity</CardTitle>
-             </CardHeader>
-             <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                   <div className={`w-12 h-12 rounded-lg flex items-center justify-center border-2 ${firewallActive ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-rose-500/10 border-rose-500/30'}`}>
-                      <Shield className={`h-6 w-6 ${firewallActive ? 'text-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]' : 'text-rose-500'}`} />
-                   </div>
-                   <div className="text-right">
-                      <div className={`text-xl font-bold ${firewallActive ? 'text-emerald-400' : 'text-rose-500'}`}>
-                         {firewallActive ? 'DEEP PROTECT' : 'BYPASS MODE'}
-                      </div>
-                      <div className="text-[9px] text-slate-500 font-mono italic">
-                         {firewallActive ? 'All Nodes Secure' : 'VULNERABILITY DETECTED'}
-                      </div>
-                   </div>
-                </div>
-                <Button 
-                   onClick={() => setFirewallActive(!firewallActive)}
-                   variant="outline" 
-                   className={`w-full text-[10px] font-bold h-8 transition-all ${
-                      firewallActive 
-                      ? 'border-slate-700 hover:bg-rose-500/10 hover:text-rose-500' 
-                      : 'border-rose-500 text-rose-500 bg-rose-500/10 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-400'
-                   }`}
-                >
-                   {firewallActive ? 'DISABLE FIREWALL' : 'ACTIVATE SYSTEM SHIELD'}
-                </Button>
-             </CardContent>
-           </Card>
-        </div>
-      </div>
-
-      <Card className="bg-slate-900/50 border-slate-800 font-mono text-[9px] text-slate-500 p-4">
-         <div className="flex items-center justify-between">
-            <div className="flex space-x-4">
-               <span>[ENCRYPTION_KEY: AES-256-GCM]</span>
-               <span>[FIREWALL: VERSION_8.1.0]</span>
-               <span>[SESSION_KEY: ENABLED]</span>
-            </div>
-            <div className="flex items-center text-emerald-500">
-               <div className="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse" />
-               SYSTEM ENFORCING ACTIVE PROTECTION
-            </div>
-         </div>
-      </Card>
-    </div>
-  )
-}
-
 function SettingsView({ 
+  theme,
+  setTheme,
   onMassSimulation, 
   onSimulateFailure 
 }: { 
+  theme: "dark" | "light",
+  setTheme: (t: "dark" | "light") => void,
   onMassSimulation: (count: number) => void,
   onSimulateFailure: () => void 
 }) {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <Card className="bg-slate-900/50 border-slate-700/50 backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle className="text-slate-100 text-lg">System Preferences</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label className="text-sm text-slate-200">Dark Mode</Label>
-              <div className="text-xs text-slate-500">Automatically adjust theme based on time</div>
-            </div>
-            <Switch defaultChecked />
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label className="text-sm text-slate-200">Auto-Update</Label>
-              <div className="text-xs text-slate-500">Keep Nexus OS on the cutting edge</div>
-            </div>
-            <Switch defaultChecked />
-          </div>
-          <div className="flex items-center justify-between opacity-50">
-            <div className="space-y-0.5">
-              <Label className="text-sm text-slate-200">Telemetry</Label>
-              <div className="text-xs text-slate-500">Send anonymous usage data to Nexus Core</div>
-            </div>
-            <Switch />
-          </div>
-        </CardContent>
-      </Card>
+  const [firewallActive, setFirewallActive] = useState(true)
 
-      <Card className="bg-slate-900/50 border-slate-700/50 border-blue-500/20 backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle className="text-blue-400 text-lg flex items-center">
-            <Activity className="mr-2 h-5 w-5" />
-            Simulation Controls
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-xs text-slate-500 mb-4 font-light">Manually trigger backend events to test architecture resilience.</p>
-          <div className="space-y-3">
-             <Button 
-               variant="outline" 
-               className="w-full justify-start text-[10px] border-slate-700 h-10 hover:bg-rose-500/10 hover:border-rose-500 transition-all font-bold tracking-widest uppercase"
-               onClick={onSimulateFailure}
-             >
-               <CircleOff className="mr-3 h-4 w-4 text-red-500" />
-               Simulate Shard Failure
-             </Button>
-             <Button 
-               variant="outline" 
-               className="w-full justify-start text-[10px] border-slate-700 h-10 hover:bg-amber-500/10 hover:border-amber-500 transition-all font-bold tracking-widest uppercase"
-               onClick={() => onMassSimulation(5000)}
-             >
-               <Zap className="mr-3 h-4 w-4 text-amber-500" />
-               Inject Peak Load (AI Test)
-             </Button>
-          </div>
-        </CardContent>
-      </Card>
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="space-y-6 lg:col-span-1">
+          
+          <Card className="bg-slate-900/50 border-slate-800">
+             <CardHeader className="py-3 px-4 border-b border-slate-800">
+                <div className="flex items-center justify-between">
+                   <Label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Defensive Shield</Label>
+                   <Switch checked={firewallActive} onCheckedChange={setFirewallActive} />
+                </div>
+             </CardHeader>
+          </Card>
+        </div>
+
+        <div className="xl:col-span-2">
+          <Card className="bg-slate-900/50 border-slate-800 h-full backdrop-blur-sm">
+            <CardHeader className="border-b border-slate-800 pb-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-emerald-400 text-sm font-bold items-center flex">
+                  <Lock className="mr-2 h-4 w-4" />
+                  SECURITY_ENFORCER_CORE
+                </CardTitle>
+                <div className="flex space-x-2">
+                   <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[9px]">ENCRYPTED</Badge>
+                   <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/20 text-[9px]">AI_SCAN_ON</Badge>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                 <div className="space-y-4">
+                    <div className="p-4 bg-slate-950/40 rounded-lg border border-slate-800 space-y-3 font-mono text-[10px]">
+                       {['SHARD_A', 'SHARD_B', 'SHARD_C'].map(node => (
+                         <div key={node} className="flex items-center justify-between">
+                           <span className="text-slate-400">{node}</span>
+                           <div className="h-1 flex-1 mx-4 bg-slate-800 rounded-full overflow-hidden">
+                             <div className="h-full bg-emerald-500" style={{ width: '100%' }} />
+                           </div>
+                           <span className="text-emerald-500">SECURE</span>
+                         </div>
+                       ))}
+                    </div>
+                    <div className="p-3 border border-slate-800 rounded-lg flex items-center justify-between">
+                       <span className="text-[10px] text-slate-500 font-mono uppercase tracking-tighter">System Integrity Scan</span>
+                       <span className="text-cyan-400 font-mono text-[10px]">STABLE_99%</span>
+                    </div>
+                 </div>
+                 <div className="bg-slate-950/40 rounded-lg border border-slate-800 p-4 space-y-3 font-mono">
+                    <div className="text-[10px] text-slate-500 uppercase flex items-center mb-1">
+                       <Activity className="mr-2 h-3 w-3" />
+                       Real-time Security Logs
+                    </div>
+                    <div className="space-y-1.5 max-h-[120px] overflow-y-auto pr-1 custom-scrollbar">
+                       {[1, 2, 3].map(i => (
+                         <div key={i} className="text-[9px] p-1.5 border-l-2 border-cyan-500 bg-cyan-500/5 flex justify-between text-slate-400">
+                           <span>ACCESS_GRANTED: NODE_{i}0{i}</span>
+                           <span className="text-slate-600">0.0{i}ms</span>
+                         </div>
+                       ))}
+                    </div>
+                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1818,13 +1886,13 @@ function AlertItem({
   const { icon: Icon, color } = getTypeStyles()
 
   return (
-    <div className="flex items-start space-x-3">
+    <div className="flex items-start space-x-3 p-2 rounded-lg hover:bg-slate-800/30 transition-colors">
       <div className={`mt-0.5 p-1 rounded-full ${color.split(" ")[1]} ${color.split(" ")[2]}`}>
         <Icon className={`h-3 w-3 ${color.split(" ")[0]}`} />
       </div>
       <div>
         <div className="flex items-center">
-          <div className="text-sm font-medium text-slate-200">{title}</div>
+          <div className="text-sm font-bold text-slate-200">{title}</div>
           <div className="ml-2 text-xs text-slate-500">{time}</div>
         </div>
         <div className="text-xs text-slate-400">{description}</div>
@@ -1839,10 +1907,10 @@ function ActionButton({ icon: Icon, label, onClick }: { icon: LucideIcon; label:
     <Button
       variant="outline"
       onClick={onClick}
-      className="h-auto py-3 px-3 border-slate-700 bg-slate-800/50 hover:bg-slate-700/50 flex flex-col items-center justify-center space-y-1 w-full"
+      className="h-auto py-3 px-3 border-slate-700/50 bg-slate-800/50 hover:bg-slate-700/50 flex flex-col items-center justify-center space-y-1 w-full text-slate-200 transition-all group"
     >
-      <Icon className="h-5 w-5 text-cyan-500" />
-      <span className="text-xs">{label}</span>
+      <Icon className="h-5 w-5 text-cyan-400 group-hover:scale-110 transition-transform" />
+      <span className="text-xs font-semibold">{label}</span>
     </Button>
   )
 }

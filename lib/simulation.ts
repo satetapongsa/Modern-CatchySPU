@@ -40,9 +40,9 @@ let currentStats = {
 }
 
 let shards: ShardStatus[] = [
-  { id: 'SERVER 1', name: 'Information Tech & Engineering', faculties: ['ICT', 'Engineering'], load: 45, status: 'online', region: 'US-EAST-1' },
-  { id: 'SERVER 2', name: 'Business & Accounting', faculties: ['Business', 'Accountancy'], load: 78, status: 'online', region: 'US-EAST-2' },
-  { id: 'SERVER 3', name: 'Arts & Communication', faculties: ['Arts', 'CommArts'], load: 22, status: 'online', region: 'US-EAST-3' },
+  { id: 'SERVER NODE 1', name: 'Information Tech & Engineering', faculties: ['ICT', 'Engineering'], load: 0, status: 'online', region: 'SPU-SOUTH-A' },
+  { id: 'SERVER NODE 2', name: 'Business & Accounting', faculties: ['Business', 'Accountancy'], load: 0, status: 'online', region: 'SPU-WEST-C' },
+  { id: 'SERVER NODE 3', name: 'Arts & Communication', faculties: ['Arts', 'CommArts'], load: 0, status: 'online', region: 'SPU-NORTH-B' },
 ]
 
 // Simulation: Update stats every few seconds (called by API)
@@ -50,25 +50,18 @@ export async function updateSystemStats() {
   const now = new Date()
   const hour = now.getHours()
   
-  // Base load depends on time of day (simulating student peak hours)
-  let baseLoad = 30
-  if ((hour >= 9 && hour <= 12) || (hour >= 13 && hour <= 16)) {
-    baseLoad = 65 + Math.random() * 20
-  } else {
-    baseLoad = 15 + Math.random() * 10
-  }
-
-  currentStats.cpuUsage = Math.min(100, Math.max(10, baseLoad + (Math.random() * 15 - 7.5)))
-  currentStats.memoryUsage = Math.min(100, Math.max(20, (baseLoad * 0.8) + (Math.random() * 10)))
-  currentStats.networkStatus = Math.min(100, Math.max(5, (baseLoad / 2) + (Math.random() * 20)))
+  // Metrics stay low unless an action occurs
+  currentStats.cpuUsage = Math.min(100, Math.max(5, (currentStats.activeRequests / 200) + (Math.random() * 2)))
+  currentStats.memoryUsage = Math.min(100, Math.max(10, (currentStats.activeRequests / 300) + (Math.random() * 5)))
+  currentStats.networkStatus = Math.min(100, Math.max(0, (currentStats.activeRequests / 500) + (Math.random() * 3)))
   
   // Update Shards Load based on database counts (Enhanced Realism)
   const stats = await getShardStats()
   shards = shards.map(shard => {
     const shardData = stats.find(s => s.shardedDb === shard.id)
     const recordCount = shardData ? shardData._count : 0
-    // Load = base traffic + factor of record count (simulating processing overhead)
-    const calculatedLoad = Math.min(100, baseLoad + (recordCount / 500) + (Math.random() * 4 - 2))
+    // Load increases with record counts
+    const calculatedLoad = Math.min(100, (recordCount / 100) + (Math.random() * 2))
     return {
       ...shard,
       load: calculatedLoad
@@ -121,31 +114,56 @@ export function getStaggeredSlot(faculty: string) {
 }
 
 // Database helper functions using Supabase SDK
-export async function createStudentRecord(data: { studentId: string, name: string, faculty: string }) {
+export async function createStudentRecord(data: { studentId: string, name: string, faculty: string, course?: string, forceShardIndex?: number }) {
   const slot = getStaggeredSlot(data.faculty)
-  // Sharding simulation: assign shard based on faculty
-  let shardedDb = "SERVER NODE 3"
-  if (data.faculty === 'IT' || data.faculty === 'Engineering') shardedDb = "SERVER NODE 1"
-  else if (data.faculty === 'Business' || data.faculty === 'Accountancy') shardedDb = "SERVER NODE 2"
+  
+  let shardedDb = ""
+  
+  if (data.forceShardIndex !== undefined) {
+    shardedDb = `SERVER NODE ${data.forceShardIndex}`
+  } else {
+    // Fetch current total count to implement Round-robin
+    const { count: totalCount, error: countError } = await supabase
+      .from('Student')
+      .select('*', { count: 'exact', head: true })
+
+    if (countError) console.error("❌ Count Error:", countError)
+    const currentCount = totalCount || 0
+    const nodeIndex = (currentCount % 3) + 1 // 1, 2, or 3
+    shardedDb = `SERVER NODE ${nodeIndex}`
+  }
+
+  // 1. Check for duplicate ID
+  const { data: existing, error: searchError } = await supabase
+    .from('Student')
+    .select('studentId')
+    .eq('studentId', data.studentId)
+    .maybeSingle()
+
+  if (searchError) console.error("❌ Search Error:", searchError)
+  if (existing) {
+    return { error: 'DUPLICATE_ID', message: "รหัสนักศึกษานี้ถูกใช้ลงทะเบียนไปแล้ว" }
+  }
 
   try {
     const { data: result, error } = await supabase
       .from('Student')
-      .upsert({
+      .insert({
         studentId: data.studentId,
         name: data.name,
         faculty: data.faculty,
+        course: data.course || 'GENERAL_EDUCATION',
         slot: slot,
         shardedDb: shardedDb
-      }, { onConflict: 'studentId' })
+      })
       .select()
       .single()
 
     if (error) throw error
-    return result
+    return { ...result, success: true }
   } catch (err) {
-    console.error("❌ Supabase Upsert Error (StudentRecord):", err)
-    return { ...data, slot, shardedDb, error: true }
+    console.error("❌ Supabase Insert Error (StudentRecord):", err)
+    return { ...data, slot, shardedDb, error: true, message: "เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล" }
   }
 }
 
@@ -219,6 +237,38 @@ export async function getShardStats() {
     }))
   } catch (err) {
     console.error("❌ Stats Fetch Error (Shard):", err)
+    return []
+  }
+}
+
+export async function getLatestStudentsByShard(shardName: string) {
+  try {
+    const { data, error } = await supabase
+      .from('Student')
+      .select('*')
+      .eq('shardedDb', shardName)
+      .order('studentId', { ascending: false }) // Use ID or another field for latest
+      .limit(10)
+    
+    if (error) throw error
+    return data || []
+  } catch (err) {
+    console.error(`❌ Fetch Error for Shard ${shardName}:`, err)
+    return []
+  }
+}
+
+export async function getAllStudents() {
+  try {
+    const { data, error } = await supabase
+      .from('Student')
+      .select('*')
+      .order('studentId', { ascending: true })
+    
+    if (error) throw error
+    return data || []
+  } catch (err) {
+    console.error("❌ Fetch All Students Error:", err)
     return []
   }
 }

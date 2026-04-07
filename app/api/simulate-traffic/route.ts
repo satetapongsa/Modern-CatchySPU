@@ -12,15 +12,19 @@ export async function POST(req: Request) {
   for (let i = 0; i < count; i += batchSize) {
     const currentBatchSize = Math.min(batchSize, count - i)
     const batch = Array.from({ length: currentBatchSize }).map((_, j) => {
-      const idx = i + j
-      const suffix = Math.floor(100000 + Math.random() * 900000).toString()
-      const studentId = `66${suffix}`
+      const globalIdx = i + j
+      const suffix = Math.floor(10000000 + Math.random() * 90000000).toString()
+      const studentId = `66${suffix.substring(2)}` // Keep it 8 digits total? No, keep it specific.
       const faculty = faculties[Math.floor(Math.random() * faculties.length)]
+      
+      // Strict balancing: ensure even distribution across 3 shards
+      const botName = `bot${Math.floor(10000000 + Math.random() * 90000000)}`
       
       return createStudentRecord({
         studentId,
         faculty,
-        name: `Simulated Student ${idx + 1}`
+        name: botName,
+        forceShardIndex: (globalIdx % 3) + 1
       })
     })
     
@@ -43,13 +47,23 @@ export async function POST(req: Request) {
   })
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url)
+  const shard = searchParams.get('shard')
+  
   // Get distribution stats safely
   const stats = await getRegistrationStats()
   const shardStats = await getShardStats()
+  
+  let shardStudents: any[] = []
+  if (shard) {
+     const { getLatestStudentsByShard } = await import("@/lib/simulation")
+     shardStudents = await getLatestStudentsByShard(shard)
+  }
 
   return NextResponse.json({
     facultyDistribution: stats,
-    shardDistribution: shardStats
+    shardDistribution: shardStats,
+    shardStudents: shardStudents
   })
 }
