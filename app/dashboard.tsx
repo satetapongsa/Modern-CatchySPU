@@ -76,6 +76,53 @@ export default function Dashboard() {
     { id: 'SERVER NODE 3', status: 'online', load: 12.8, region: 'NORTH_B1' }
   ])
 
+  const [distributionData, setDistributionData] = useState<any[]>([
+    { name: 'IT', count: 0 }, { name: 'Eng', count: 0 }, { name: 'Biz', count: 0 },
+    { name: 'Acc', count: 0 }, { name: 'Media', count: 0 }, { name: 'Comm', count: 0 },
+    { name: 'Arts', count: 0 }, { name: 'Law', count: 0 }, { name: 'Arch', count: 0 },
+    { name: 'Tour', count: 0 }, { name: 'Intl', count: 0 }
+  ])
+  const [serverDistribution, setServerDistribution] = useState<any[]>([
+    { name: 'SERVER NODE 1', value: 0 },
+    { name: 'SERVER NODE 2', value: 0 },
+    { name: 'SERVER NODE 3', value: 0 }
+  ])
+
+  const fetchDistributions = async () => {
+    try {
+      const res = await fetch('/api/simulate-traffic')
+      if (!res.ok) return
+      const data = await res.json()
+      
+      const faculties = [
+        { id: 'IT', label: 'IT' }, { id: 'Engineering', label: 'Eng' }, { id: 'Business', label: 'Biz' },
+        { id: 'Accountancy', label: 'Acc' }, { id: 'DigitalMedia', label: 'Media' }, { id: 'CommArts', label: 'Comm' },
+        { id: 'Arts', label: 'Arts' }, { id: 'Law', label: 'Law' }, { id: 'Architecture', label: 'Arch' },
+        { id: 'Tourism', label: 'Tour' }, { id: 'International', label: 'Intl' }
+      ]
+
+      const chartData = faculties.map(f => {
+        const match = data.facultyDistribution.find((d: any) => d.faculty === f.id)
+        return { name: f.label, count: match ? match._count : 0 }
+      })
+
+      const shardNames = ['SERVER NODE 1', 'SERVER NODE 2', 'SERVER NODE 3']
+      const shardChartData = shardNames.map(name => {
+        const match = data.shardDistribution.find((d: any) => d.shardedDb === name)
+        return { name: name, value: match ? match._count : 0 }
+      })
+
+      setDistributionData(chartData)
+      setServerDistribution(shardChartData)
+    } catch (e) {}
+  }
+
+  useEffect(() => {
+    fetchDistributions()
+    const interval = setInterval(fetchDistributions, 10000)
+    return () => clearInterval(interval)
+  }, [])
+
   // Helper for random SPU IP
   const generateSpuIp = () => `10.21.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
 
@@ -93,6 +140,20 @@ export default function Dashboard() {
 
   // Global Handlers
   const handleMassSimulation = async (count: number) => {
+    // SNAPPY UI: Immediate calculation with realistic variance
+    const perShardBase = Math.floor(count / 3)
+    const perFacultyBase = Math.floor(count / 11)
+
+    setServerDistribution(prev => prev.map((item, idx) => ({
+      ...item,
+      value: item.value + perShardBase + (idx === 0 ? count % 3 : 0)
+    })))
+
+    setDistributionData(prev => prev.map((item, idx) => ({
+      ...item,
+      count: item.count + perFacultyBase + (idx === 0 ? count % 11 : 0) + (Math.floor(Math.random() * 5) - 2)
+    })))
+
     setIsSimulating(true)
     const promise = fetch('/api/simulate-traffic', { 
       method: 'POST',
@@ -102,21 +163,26 @@ export default function Dashboard() {
     
     toast.promise(promise, {
       loading: `Injecting ${count.toLocaleString()} Peak Load Ingress...`,
-      success: `AI Optimized ${count} sessions successfully.`,
+      success: `AI Optimized ${count} sessions successfully across all nodes.`,
       error: 'Simulation failed. Check API connectivity.',
     })
 
     try {
       await promise
-      // Generate some visual logs for mass simulation
-      const logCount = Math.min(10, Math.floor(count / 100))
-      for (let i = 0; i < logCount; i++) {
-        setTimeout(() => {
-          addLog({ id: `66${Math.floor(100000 + Math.random() * 899999)}` })
-        }, i * 200)
-      }
+      setTimeout(fetchDistributions, 3000)
     } finally {
       setIsSimulating(false)
+    }
+  }
+
+  const handlePurgeMemory = async () => {
+    const res = await fetch('/api/reset-db', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      setDistributionData(prev => prev.map(item => ({ ...item, count: 0 })));
+      setServerDistribution(prev => prev.map(item => ({ ...item, value: 0 })));
+      toast.success("Database Purged: Systems are now at Clean State (0 Records)");
+      fetchDistributions();
     }
   }
 
@@ -850,9 +916,23 @@ export default function Dashboard() {
                 onMassSimulation={handleMassSimulation} 
                 onAddLog={addLog}
                 setActiveTab={setActiveTab}
+                distributionData={distributionData}
+                serverDistribution={serverDistribution}
+                setDistributionData={setDistributionData}
+                setServerDistribution={setServerDistribution}
+                onPurge={handlePurgeMemory}
+                fetchDistributions={fetchDistributions}
               />
             )}
-            {activeTab === "Data Center" && <DataCenterView isSimulating={isSimulating} servers={servers} setServers={setServers} />}
+            {activeTab === "Data Center" && (
+              <DataCenterView 
+                isSimulating={isSimulating} 
+                servers={servers} 
+                setServers={setServers} 
+                serverDistribution={serverDistribution}
+                setServerDistribution={setServerDistribution}
+              />
+            )}
             {activeTab === "Network" && <NetworkView logs={networkLogs} perfHistory={perfHistory} networkStatus={networkStatus} />}
             {activeTab === "Settings" && (
               <SettingsView 
@@ -898,13 +978,25 @@ function DiagnosticsView({
   setIsSimulating, 
   onMassSimulation,
   onAddLog,
-  setActiveTab
+  setActiveTab,
+  distributionData,
+  serverDistribution,
+  setDistributionData,
+  setServerDistribution,
+  onPurge,
+  fetchDistributions
 }: { 
   isSimulating: boolean, 
   setIsSimulating: (v: boolean) => void,
   onMassSimulation: (count: number) => void,
   onAddLog: (info: { id: string; ip?: string; status?: string }) => void,
-  setActiveTab: (tab: string) => void
+  setActiveTab: (tab: string) => void,
+  distributionData: any[],
+  serverDistribution: any[],
+  setDistributionData: (d: any[]) => void,
+  setServerDistribution: (d: any[]) => void,
+  onPurge: () => void,
+  fetchDistributions: () => void
 }) {
   const [faculty, setFaculty] = useState('IT')
   const [studentId, setStudentId] = useState('')
@@ -912,48 +1004,9 @@ function DiagnosticsView({
   const [course, setCourse] = useState('')
   const [regResult, setRegResult] = useState<any>(null)
   
-  const [distributionData, setDistributionData] = useState<any[]>([])
-  const [shardData, setShardData] = useState<any[]>([])
   const [selectedShard, setSelectedShard] = useState<string | null>(null)
   const [shardLogs, setShardLogs] = useState<any[]>([])
   const [isLogsLoading, setIsLogsLoading] = useState(false)
-
-  const fetchDistributions = async () => {
-    const res = await fetch('/api/simulate-traffic')
-    const data = await res.json()
-    
-    // 6 Real SPU Faculties
-    const faculties = [
-      { id: 'IT', label: 'IT' },
-      { id: 'Engineering', label: 'Eng' },
-      { id: 'Business', label: 'Biz' },
-      { id: 'Accountancy', label: 'Acc' },
-      { id: 'DigitalMedia', label: 'Media' },
-      { id: 'CommArts', label: 'Comm' },
-      { id: 'Arts', label: 'Arts' },
-      { id: 'Law', label: 'Law' },
-      { id: 'Architecture', label: 'Arch' },
-      { id: 'Tourism', label: 'Tour' },
-      { id: 'International', label: 'Intl' }
-    ]
-
-    const chartData = faculties.map(f => {
-      const match = data.facultyDistribution.find((d: any) => d.faculty === f.id)
-      return { name: f.label, count: match ? match._count : 0 }
-    })
-
-    const shardNames = ['SERVER NODE 1', 'SERVER NODE 2', 'SERVER NODE 3']
-    const shardChartData = shardNames.map(name => {
-      const match = data.shardDistribution.find((d: any) => d.shardedDb === name)
-      return {
-        name: name,
-        count: match ? match._count : 0
-      }
-    })
-
-    setDistributionData(chartData)
-    setShardData(shardChartData)
-  }
 
   const fetchShardLogs = async (shardName: string) => {
     setIsLogsLoading(true)
@@ -967,12 +1020,6 @@ function DiagnosticsView({
       setIsLogsLoading(false)
     }
   }
-
-  useEffect(() => {
-    fetchDistributions()
-    const interval = setInterval(fetchDistributions, 10000)
-    return () => clearInterval(interval)
-  }, [])
 
   useEffect(() => {
     if (selectedShard) {
@@ -1024,29 +1071,7 @@ function DiagnosticsView({
   }
 
   const handleMassSimulationWrapper = async (count: number) => {
-    // 1. Immediate Visual Update (Snappy UI)
-    const perShard = Math.floor(count / 3)
-    const perFaculty = Math.floor(count / 11)
-
-    // Update Local Distribution Chart
-    setDistributionData(prev => prev.map(item => ({
-      ...item,
-      count: item.count + perFaculty
-    })))
-
-    // Update Local Shard Stats
-    setShardData(prev => prev.map(item => ({
-      ...item,
-      count: item.count + perShard
-    })))
-
-    // 2. Execute background simulation (Database)
-    setIsSimulating(true)
     onMassSimulation(count)
-    
-    // 3. Optional: Sync with DB after a short delay to ensure everything is saved
-    setTimeout(fetchDistributions, 3000)
-    setIsSimulating(false)
     if (selectedShard) setTimeout(() => fetchShardLogs(selectedShard), 3000)
   }
 
@@ -1118,22 +1143,7 @@ function DiagnosticsView({
                   </div>
                   <p className="text-[10px] text-slate-500 mb-4 italic">Clears overall student records from all nodes to prevent storage overflow. Use this before running fresh simulation cycles.</p>
                   <Button 
-                    onClick={async () => { 
-                      if (confirm("🚨 CRITICAL ACTION: This will PERMANENTLY DELETE all student records across all shards. Are you absolutely sure?")) { 
-                        const wipeToast = toast.loading("Executing Database Wipe Protocol...");
-                        const res = await fetch('/api/reset-db', { method: 'POST' }); 
-                        const data = await res.json(); 
-                        if (data.success) { 
-                          // Immediate Local Clear
-                          setDistributionData(prev => prev.map(item => ({ ...item, count: 0 })));
-                          setShardData(prev => prev.map(item => ({ ...item, count: 0 })));
-                          toast.success("Database Purged: Systems are now at Clean State (0 Records)", { id: wipeToast }); 
-                          fetchDistributions();
-                        } else { 
-                          toast.error("Wipe Failed: " + data.error, { id: wipeToast });
-                        } 
-                      } 
-                    }} 
+                    onClick={onPurge} 
                     className="w-full bg-rose-600 hover:bg-rose-700 text-white font-black text-xs h-10 shadow-[0_0_20px_rgba(225,29,72,0.2)] transition-all"
                   >
                     PURGE ALL RECORDS & RESET SHARDS
@@ -1168,9 +1178,9 @@ function DiagnosticsView({
                  GO TO DATA CENTER →
                </Button>
             </div>
-            {shardData.map((shard, idx) => {
+            {serverDistribution.map((shard, idx) => {
               const colors = ['#06b6d4', '#a855f7', '#3b82f6'];
-              const percentage = Math.min(100, (shard.count / 5000) * 100);
+              const percentage = Math.min(100, (shard.value / 5000) * 100);
               const isSelected = selectedShard === shard.name;
               
               return (
@@ -1194,7 +1204,7 @@ function DiagnosticsView({
                       <div className="flex-1">
                         <div className="flex justify-between items-center mb-1.5">
                           <span className="text-[9px] text-slate-400 font-mono">Load Distribution</span>
-                          <span className="text-[10px] font-bold text-white font-mono">{shard.count.toLocaleString()} <span className="text-slate-600 text-[8px]">REC</span></span>
+                          <span className="text-[10px] font-bold text-white font-mono">{shard.value.toLocaleString()} <span className="text-slate-600 text-[8px]">REC</span></span>
                         </div>
                         <div className="h-2 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800/50 p-0.5">
                           <div 
@@ -1274,13 +1284,16 @@ function DiagnosticsView({
 function DataCenterView({ 
   isSimulating, 
   servers, 
-  setServers 
+  setServers,
+  serverDistribution,
+  setServerDistribution
 }: { 
   isSimulating: boolean, 
   servers: any[], 
-  setServers: (s: any[]) => void 
+  setServers: (s: any[]) => void,
+  serverDistribution: any[],
+  setServerDistribution: (d: any[]) => void
 }) {
-  const [serverDistribution, setServerDistribution] = useState<any[]>([])
   const [aiData, setAiData] = useState<any>(null)
   
   useEffect(() => {
@@ -1288,32 +1301,14 @@ function DataCenterView({
        const res = await fetch('/api/shards')
        setServers(await res.json())
     }
-    const fetchDist = async () => {
-       const res = await fetch('/api/simulate-traffic')
-       const data = await res.json()
-       setServerDistribution(data.shardDistribution.map((d: any) => ({ 
-         name: String(d.shardedDb)
-           .replace('Shard A', 'SERVER NODE 1')
-           .replace('Shard B', 'SERVER NODE 2')
-           .replace('Shard C', 'SERVER NODE 3')
-           .replace('SERVER NODE 1', 'SERVER NODE 1') // Avoid double replace
-           .replace('SERVER NODE 2', 'SERVER NODE 2')
-           .replace('SERVER NODE 3', 'SERVER NODE 3')
-           .replace('SERVER 1', 'SERVER NODE 1')
-           .replace('SERVER 2', 'SERVER NODE 2')
-           .replace('SERVER 3', 'SERVER NODE 3'),
-         value: d._count 
-       })))
-    }
     const fetchAi = async () => {
        const res = await fetch('/api/status')
        const data = await res.json()
        setAiData(data.aiCore)
     }
     fetchShards()
-    fetchDist()
     fetchAi()
-    const interval = setInterval(() => { fetchShards(); fetchDist(); fetchAi(); }, 5000)
+    const interval = setInterval(() => { fetchShards(); fetchAi(); }, 5000)
     return () => clearInterval(interval)
   }, [])
 
