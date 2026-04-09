@@ -40,9 +40,9 @@ let currentStats = {
 }
 
 let shards: ShardStatus[] = [
-  { id: 'SERVER NODE 1', name: 'Information Tech & Engineering', faculties: ['ICT', 'Engineering'], load: 0, status: 'online', region: 'SPU-SOUTH-A' },
-  { id: 'SERVER NODE 2', name: 'Business & Accounting', faculties: ['Business', 'Accountancy'], load: 0, status: 'online', region: 'SPU-WEST-C' },
-  { id: 'SERVER NODE 3', name: 'Arts & Communication', faculties: ['Arts', 'CommArts'], load: 0, status: 'online', region: 'SPU-NORTH-B' },
+  { id: 'SERVER NODE 1', name: 'Tech & Architecture', faculties: ['IT', 'Engineering', 'Architecture'], load: 0, status: 'online', region: 'SPU-SOUTH-A' },
+  { id: 'SERVER NODE 2', name: 'Business, Law & Global', faculties: ['Business', 'Accountancy', 'Law', 'International'], load: 0, status: 'online', region: 'SPU-WEST-C' },
+  { id: 'SERVER NODE 3', name: 'Media & Liberal Arts', faculties: ['Arts', 'CommArts', 'DigitalMedia', 'Tourism'], load: 0, status: 'online', region: 'SPU-NORTH-B' },
 ]
 
 // Simulation: Update stats every few seconds (called by API)
@@ -106,9 +106,14 @@ export function getStaggeredSlot(faculty: string) {
     'IT': '08:00 - 09:30',
     'Engineering': '09:30 - 11:00',
     'Business': '11:00 - 12:30',
-    'Accountancy': '13:00 - 14:30',
-    'Arts': '14:30 - 16:00',
-    'CommArts': '16:00 - 17:30'
+    'Accountancy': '12:30 - 13:30',
+    'DigitalMedia': '13:30 - 14:30',
+    'CommArts': '14:30 - 15:30',
+    'Arts': '15:30 - 16:30',
+    'Law': '16:30 - 17:30',
+    'Architecture': '09:00 - 10:30',
+    'Tourism': '10:30 - 12:00',
+    'International': '13:00 - 14:30'
   }
   return slots[faculty] || 'Anytime'
 }

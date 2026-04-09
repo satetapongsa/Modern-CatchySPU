@@ -849,6 +849,7 @@ export default function Dashboard() {
                 setIsSimulating={setIsSimulating} 
                 onMassSimulation={handleMassSimulation} 
                 onAddLog={addLog}
+                setActiveTab={setActiveTab}
               />
             )}
             {activeTab === "Data Center" && <DataCenterView isSimulating={isSimulating} servers={servers} setServers={setServers} />}
@@ -896,12 +897,14 @@ function DiagnosticsView({
   isSimulating, 
   setIsSimulating, 
   onMassSimulation,
-  onAddLog
+  onAddLog,
+  setActiveTab
 }: { 
   isSimulating: boolean, 
   setIsSimulating: (v: boolean) => void,
   onMassSimulation: (count: number) => void,
-  onAddLog: (info: { id: string; ip?: string; status?: string }) => void
+  onAddLog: (info: { id: string; ip?: string; status?: string }) => void,
+  setActiveTab: (tab: string) => void
 }) {
   const [faculty, setFaculty] = useState('IT')
   const [studentId, setStudentId] = useState('')
@@ -921,12 +924,17 @@ function DiagnosticsView({
     
     // 6 Real SPU Faculties
     const faculties = [
-      { id: 'IT', label: 'Info Tech' },
-      { id: 'Engineering', label: 'Engineering' },
-      { id: 'Business', label: 'Business' },
-      { id: 'Accountancy', label: 'Accountancy' },
-      { id: 'DigitalMedia', label: 'Digital Media' },
-      { id: 'CommArts', label: 'Comm Arts' }
+      { id: 'IT', label: 'IT' },
+      { id: 'Engineering', label: 'Eng' },
+      { id: 'Business', label: 'Biz' },
+      { id: 'Accountancy', label: 'Acc' },
+      { id: 'DigitalMedia', label: 'Media' },
+      { id: 'CommArts', label: 'Comm' },
+      { id: 'Arts', label: 'Arts' },
+      { id: 'Law', label: 'Law' },
+      { id: 'Architecture', label: 'Arch' },
+      { id: 'Tourism', label: 'Tour' },
+      { id: 'International', label: 'Intl' }
     ]
 
     const chartData = faculties.map(f => {
@@ -934,10 +942,14 @@ function DiagnosticsView({
       return { name: f.label, count: match ? match._count : 0 }
     })
 
-    const shardChartData = data.shardDistribution.map((d: any) => ({
-      name: d.shardedDb,
-      count: d._count
-    }))
+    const shardNames = ['SERVER NODE 1', 'SERVER NODE 2', 'SERVER NODE 3']
+    const shardChartData = shardNames.map(name => {
+      const match = data.shardDistribution.find((d: any) => d.shardedDb === name)
+      return {
+        name: name,
+        count: match ? match._count : 0
+      }
+    })
 
     setDistributionData(chartData)
     setShardData(shardChartData)
@@ -1048,6 +1060,11 @@ function DiagnosticsView({
                      <option value="Accountancy">Accountancy</option>
                      <option value="DigitalMedia">Digital Media</option>
                      <option value="CommArts">Comm Arts</option>
+                     <option value="Arts">Liberal Arts</option>
+                     <option value="Law">Law</option>
+                     <option value="Architecture">Architecture</option>
+                     <option value="Tourism">Tourism & Hospitality</option>
+                     <option value="International">International College</option>
                    </select>
                  </div>
                  <div>
@@ -1073,7 +1090,31 @@ function DiagnosticsView({
                     </div>
                   ))}
                 </div>
-                <Button onClick={async () => { if (confirm("🚨 WARNING: This will WIPE all infrastructure records and restart simulation. Proceed?")) { const res = await fetch('/api/reset-db', { method: 'POST' }); const data = await res.json(); if (data.success) { toast.success("Infrastructure Cleared (Clean State)"); fetchDistributions() } else { toast.error("Cleanup Failed: " + data.error) } } }} variant="ghost" className="w-full mt-6 text-[10px] text-rose-500 border border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-400 font-mono tracking-widest uppercase">WIPE & RE-OPTIMIZE DATABASE (CLEAN STATE)</Button>
+                <div className="bg-rose-950/20 border border-rose-500/20 rounded-lg p-4 mt-6">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <AlertCircle className="h-4 w-4 text-rose-500" />
+                    <span className="text-xs font-bold text-rose-400 uppercase tracking-widest">Database Maintenance</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mb-4 italic">Clears overall student records from all nodes to prevent storage overflow. Use this before running fresh simulation cycles.</p>
+                  <Button 
+                    onClick={async () => { 
+                      if (confirm("🚨 CRITICAL ACTION: This will PERMANENTLY DELETE all student records across all shards. Are you absolutely sure?")) { 
+                        const wipeToast = toast.loading("Executing Database Wipe Protocol...");
+                        const res = await fetch('/api/reset-db', { method: 'POST' }); 
+                        const data = await res.json(); 
+                        if (data.success) { 
+                          toast.success("Database Purged: Systems are now at Clean State (0 Records)", { id: wipeToast }); 
+                          fetchDistributions();
+                        } else { 
+                          toast.error("Wipe Failed: " + data.error, { id: wipeToast });
+                        } 
+                      } 
+                    }} 
+                    className="w-full bg-rose-600 hover:bg-rose-700 text-white font-black text-xs h-10 shadow-[0_0_20px_rgba(225,29,72,0.2)] transition-all"
+                  >
+                    PURGE ALL RECORDS & RESET SHARDS
+                  </Button>
+                </div>
                 {isSimulating && (<div className="mt-6 flex items-center justify-center space-x-3 text-cyan-400 animate-pulse"><Activity className="h-5 w-5 animate-spin-slow" /><span className="text-xs font-mono uppercase tracking-widest font-bold">AI Optimizing Distribution...</span></div>)}
             </div>
           </CardContent>
@@ -1085,36 +1126,75 @@ function DiagnosticsView({
             <CardContent>
               <div className="h-48 mt-2">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={distributionData}><CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} /><XAxis dataKey="name" stroke="#475569" fontSize={9} tickLine={false} interval={0} /><YAxis stroke="#475569" fontSize={10} tickLine={false} /><ReTooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }} itemStyle={{ color: '#22d3ee' }} /><Bar dataKey="count" radius={[4, 4, 0, 0]}>{distributionData.map((entry, index) => (<Cell key={`cell-${index}`} fill={['#06b6d4', '#a855f7', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'][index % 6]} />))}</Bar></BarChart>
+                  <BarChart data={distributionData}><CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} /><XAxis dataKey="name" stroke="#475569" fontSize={8} tickLine={false} interval={0} /><YAxis stroke="#475569" fontSize={10} tickLine={false} /><ReTooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }} itemStyle={{ color: '#22d3ee' }} /><Bar dataKey="count" radius={[4, 4, 0, 0]}>{distributionData.map((entry, index) => (<Cell key={`cell-${index}`} fill={['#06b6d4', '#a855f7', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#f43f5e', '#8b5cf6', '#14b8a6', '#f97316', '#0ea5e9'][index % 11]} />))}</Bar></BarChart>
                 </ResponsiveContainer>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-slate-900/50 border-slate-700/50 backdrop-blur-sm relative overflow-hidden group">
-            <div className={`absolute top-0 left-0 w-1 h-full bg-cyan-500 transition-all duration-500 ${selectedShard ? 'opacity-100' : 'opacity-0'}`} />
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-mono uppercase tracking-[0.2em] text-cyan-600 dark:text-cyan-400">Infrastructure Distribution (By Server)</CardTitle>
-              <p className="text-[10px] text-slate-500 dark:text-slate-500">Pick a node to examine drill-down logs</p>
-            </CardHeader>
-            <CardContent>
-              <div className="h-48 mt-2">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={shardData} onClick={(data) => { if (data && data.activeLabel) { setSelectedShard(data.activeLabel); } }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="name" stroke="#475569" fontSize={10} tickLine={false} tickFormatter={(val) => val.replace('SERVER NODE ', 'SN-')} />
-                    <YAxis stroke="#475569" fontSize={10} tickLine={false} />
-                    <ReTooltip cursor={{ fill: 'rgba(6, 182, 212, 0.1)' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#ffffff' }} itemStyle={{ color: '#ffffff' }} />
-                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                      {shardData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={selectedShard === entry.name ? '#22d3ee' : '#0f172a'} stroke={selectedShard === entry.name ? '#22d3ee' : '#334155'} strokeWidth={2} className="cursor-pointer hover:opacity-80 transition-opacity" />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="grid grid-cols-1 gap-4">
+            <div className="flex items-center justify-between px-1">
+               <span className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.2em]">Live Infrastructure Status</span>
+               <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setActiveTab("Data Center")}
+                className="text-[9px] text-cyan-500 hover:text-cyan-400 font-bold h-6 border border-cyan-500/20 hover:bg-cyan-500/10"
+               >
+                 GO TO DATA CENTER →
+               </Button>
+            </div>
+            {shardData.map((shard, idx) => {
+              const colors = ['#06b6d4', '#a855f7', '#3b82f6'];
+              const percentage = Math.min(100, (shard.count / 5000) * 100);
+              const isSelected = selectedShard === shard.name;
+              
+              return (
+                <Card 
+                  key={shard.name} 
+                  onClick={() => setSelectedShard(shard.name)}
+                  className={`bg-slate-900/50 border transition-all duration-300 relative overflow-hidden group cursor-pointer ${isSelected ? 'border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.2)]' : 'border-slate-800 hover:border-slate-700'}`}
+                >
+                  <div className={`absolute top-0 left-0 w-1 h-full transition-all duration-500`} style={{ backgroundColor: colors[idx], opacity: isSelected ? 1 : 0.3 }} />
+                  <CardHeader className="py-3 px-4 flex flex-row items-center justify-between space-y-0">
+                    <div>
+                      <CardTitle className="text-[10px] font-mono uppercase tracking-widest" style={{ color: colors[idx] }}>{shard.name}</CardTitle>
+                      <p className="text-[8px] text-slate-500 font-mono mt-0.5">SPU-CLUSTER-NODE-{idx+1}</p>
+                    </div>
+                    <Badge variant="outline" className="text-[8px] border-slate-700 text-slate-400 bg-slate-950/50">
+                      {isSelected ? 'ACTIVE_SCAN' : 'READY'}
+                    </Badge>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 pt-0">
+                    <div className="flex items-center space-x-4">
+                      <div className="flex-1">
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="text-[9px] text-slate-400 font-mono">Load Distribution</span>
+                          <span className="text-[10px] font-bold text-white font-mono">{shard.count.toLocaleString()} <span className="text-slate-600 text-[8px]">REC</span></span>
+                        </div>
+                        <div className="h-2 w-full bg-slate-950 rounded-full overflow-hidden border border-slate-800/50 p-0.5">
+                          <div 
+                            className="h-full rounded-full transition-all duration-1000 ease-in-out relative"
+                            style={{ 
+                              width: `${percentage}%`, 
+                              backgroundColor: colors[idx],
+                              boxShadow: `0 0 10px ${colors[idx]}` 
+                            }} 
+                          >
+                             <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent" />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="h-10 w-10 flex flex-col items-center justify-center bg-slate-950/80 rounded-lg border border-slate-800">
+                         <div className="text-[10px] font-black" style={{ color: colors[idx] }}>{percentage.toFixed(0)}%</div>
+                         <div className="text-[6px] text-slate-600 font-mono">UTIL</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       </div>
 

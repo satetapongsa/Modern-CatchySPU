@@ -1,50 +1,58 @@
 import { NextResponse } from "next/server"
-import { createStudentRecord, tickSimulation, getRegistrationStats, getShardStats, logSystemEvent } from "@/lib/simulation"
+import { tickSimulation, getRegistrationStats, getShardStats, logSystemEvent, getStaggeredSlot } from "@/lib/simulation"
+import { supabase } from "@/lib/supabase"
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const count = body.count || 1000
   const startTime = Date.now()
   
-  const batchSize = 100
-  const faculties = ['IT', 'Engineering', 'Business', 'Accountancy', 'DigitalMedia', 'CommArts']
+  const faculties = [
+    'IT', 'Engineering', 'Business', 'Accountancy', 
+    'DigitalMedia', 'CommArts', 'Arts', 'Law', 
+    'Architecture', 'Tourism', 'International'
+  ]
+  
+  const batchSize = 100; // Increased for speed
   
   for (let i = 0; i < count; i += batchSize) {
     const currentBatchSize = Math.min(batchSize, count - i)
-    const batch = Array.from({ length: currentBatchSize }).map((_, j) => {
-      const globalIdx = i + j
-      const suffix = Math.floor(10000000 + Math.random() * 90000000).toString()
-      const studentId = `66${suffix.substring(2)}` // Keep it 8 digits total? No, keep it specific.
-      const faculty = faculties[Math.floor(Math.random() * faculties.length)]
-      
-      // Strict balancing: ensure even distribution across 3 shards
-      const botName = `bot${Math.floor(10000000 + Math.random() * 90000000)}`
-      
-      return createStudentRecord({
-        studentId,
-        faculty,
-        name: botName,
-        forceShardIndex: (globalIdx % 3) + 1
-      })
-    })
+    const studentsBatch = []
     
-    await Promise.all(batch)
+    for (let j = 0; j < currentBatchSize; j++) {
+      const globalIdx = i + j
+      const uniqueId = `${Date.now()}${globalIdx}${Math.floor(Math.random() * 1000)}`.substring(0, 10)
+      const studentId = `66${uniqueId.substring(4)}`
+      const facultyIdx = globalIdx % faculties.length
+      const faculty = faculties[facultyIdx]
+      
+      // STRICT SHARDING: 1, 2, or 3
+      const shardIndex = (globalIdx % 3) + 1
+      const shardedDb = `SERVER NODE ${shardIndex}`
+      
+      studentsBatch.push({
+        studentId,
+        name: `bot_${uniqueId}`,
+        faculty,
+        course: 'MASS_SIMULATION_STRESS_TEST',
+        slot: getStaggeredSlot(faculty),
+        shardedDb: shardedDb
+      })
+    }
+    
+    // Bulk insert for maximum performance and reliability
+    const { error } = await supabase
+      .from('Student')
+      .insert(studentsBatch)
+    
+    if (error) console.error(`Batch Error at ${i}:`, error)
     await tickSimulation()
   }
   
-  const endTime = Date.now()
-  const duration = endTime - startTime
-  
-  // Log entry using dedicated function
-  await logSystemEvent(`Mass Traffic Simulation: ${count.toLocaleString()} requests processed in ${duration}ms`, 100)
+  const duration = Date.now() - startTime
+  await logSystemEvent(`Mass Sharding Simulation: ${count.toLocaleString()} records distributed across 3 nodes in ${duration}ms`, 100)
 
-  return NextResponse.json({
-    success: true,
-    count: count,
-    durationMs: duration,
-    avgResponseMs: duration / count,
-    timestamp: new Date().toISOString()
-  })
+  return NextResponse.json({ success: true, count, durationMs: duration })
 }
 
 export async function GET(req: Request) {
