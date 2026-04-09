@@ -1371,6 +1371,14 @@ function DataCenterView({
           
           return (
             <Card key={server.id} className="bg-slate-900/50 border-slate-700/50 relative overflow-hidden group hover:border-cyan-500/30 transition-all duration-500">
+              {/* Syncing Overlay */}
+              {isSimulating && (
+                <div className="absolute inset-0 bg-cyan-500/5 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center animate-in fade-in duration-300">
+                   <RefreshCw className="h-5 w-5 text-cyan-400 animate-spin mb-2" />
+                   <span className="text-[8px] font-mono text-cyan-400 uppercase tracking-widest animate-pulse">Syncing Shard...</span>
+                </div>
+              )}
+              
               <div className={`absolute top-0 right-1 p-2 opacity-20 group-hover:opacity-100 transition-opacity`}>
                  <div className={`h-1.5 w-1.5 rounded-full ${server.status === 'online' ? 'bg-green-500' : 'bg-rose-500'} shadow-[0_0_8px_currentColor]`} />
               </div>
