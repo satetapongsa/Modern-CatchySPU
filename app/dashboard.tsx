@@ -1024,8 +1024,29 @@ function DiagnosticsView({
   }
 
   const handleMassSimulationWrapper = async (count: number) => {
-    await onMassSimulation(count)
-    setTimeout(fetchDistributions, 2000)
+    // 1. Immediate Visual Update (Snappy UI)
+    const perShard = Math.floor(count / 3)
+    const perFaculty = Math.floor(count / 11)
+
+    // Update Local Distribution Chart
+    setDistributionData(prev => prev.map(item => ({
+      ...item,
+      count: item.count + perFaculty
+    })))
+
+    // Update Local Shard Stats
+    setShardData(prev => prev.map(item => ({
+      ...item,
+      count: item.count + perShard
+    })))
+
+    // 2. Execute background simulation (Database)
+    setIsSimulating(true)
+    onMassSimulation(count)
+    
+    // 3. Optional: Sync with DB after a short delay to ensure everything is saved
+    setTimeout(fetchDistributions, 3000)
+    setIsSimulating(false)
     if (selectedShard) setTimeout(() => fetchShardLogs(selectedShard), 3000)
   }
 
@@ -1103,6 +1124,9 @@ function DiagnosticsView({
                         const res = await fetch('/api/reset-db', { method: 'POST' }); 
                         const data = await res.json(); 
                         if (data.success) { 
+                          // Immediate Local Clear
+                          setDistributionData(prev => prev.map(item => ({ ...item, count: 0 })));
+                          setShardData(prev => prev.map(item => ({ ...item, count: 0 })));
                           toast.success("Database Purged: Systems are now at Clean State (0 Records)", { id: wipeToast }); 
                           fetchDistributions();
                         } else { 
