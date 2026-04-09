@@ -193,55 +193,47 @@ export async function logSystemEvent(event: string, loadLevel: number) {
 }
 
 export async function getRegistrationStats() {
+  const faculties = [
+    'IT', 'Engineering', 'Business', 'Accountancy', 
+    'DigitalMedia', 'CommArts', 'Arts', 'Law', 
+    'Architecture', 'Tourism', 'International'
+  ]
+  
   try {
-    // Supabase JS SDK doesn't natively support groupBy in select yet.
-    // For large datasets, use an RPC call or view.
-    // For this simulation, we'll fetch faculties and count in JS if needed,
-    // or just fetch counts specifically for known faculties.
-    const { data, error } = await supabase
-      .from('Student')
-      .select('faculty')
-    
-    if (error) throw error
-    
-    if (!data) return []
-
-    // Manual grouping (simulation only)
-    const counts: Record<string, number> = {}
-    data.forEach((s: any) => {
-      counts[s.faculty] = (counts[s.faculty] || 0) + 1
-    })
-
-    return Object.entries(counts).map(([faculty, count]) => ({
-      faculty,
-      _count: count
+    const counts = await Promise.all(faculties.map(async (f) => {
+      const { count, error } = await supabase
+        .from('Student')
+        .select('*', { count: 'exact', head: true })
+        .eq('faculty', f)
+      
+      if (error) console.error(`Count error for ${f}:`, error)
+      return { faculty: f, _count: count || 0 }
     }))
+    
+    return counts
   } catch (err) {
-    console.error("❌ Stats Fetch Error (Faculty):", err)
+    console.error("❌ Stats Fetch Error (Faculty Aggregation):", err)
     return []
   }
 }
 
 export async function getShardStats() {
+  const shards = ['SERVER NODE 1', 'SERVER NODE 2', 'SERVER NODE 3']
+  
   try {
-    const { data, error } = await supabase
-      .from('Student')
-      .select('shardedDb')
-    
-    if (error) throw error
-    if (!data) return []
-
-    const counts: Record<string, number> = {}
-    data.forEach((s: any) => {
-      counts[s.shardedDb] = (counts[s.shardedDb] || 0) + 1
-    })
-
-    return Object.entries(counts).map(([shardedDb, count]) => ({
-      shardedDb,
-      _count: count
+    const counts = await Promise.all(shards.map(async (s) => {
+      const { count, error } = await supabase
+        .from('Student')
+        .select('*', { count: 'exact', head: true })
+        .eq('shardedDb', s)
+      
+      if (error) console.error(`Count error for ${s}:`, error)
+      return { shardedDb: s, _count: count || 0 }
     }))
+    
+    return counts
   } catch (err) {
-    console.error("❌ Stats Fetch Error (Shard):", err)
+    console.error("❌ Stats Fetch Error (Shard Aggregation):", err)
     return []
   }
 }

@@ -141,20 +141,6 @@ export default function Dashboard() {
 
   // Global Handlers
   const handleMassSimulation = async (count: number) => {
-    // SNAPPY UI: Immediate calculation with realistic variance
-    const perShardBase = Math.floor(count / 3)
-    const perFacultyBase = Math.floor(count / 11)
-
-    setServerDistribution(prev => prev.map((item, idx) => ({
-      ...item,
-      value: item.value + perShardBase + (idx === 0 ? count % 3 : 0)
-    })))
-
-    setDistributionData(prev => prev.map((item, idx) => ({
-      ...item,
-      count: item.count + perFacultyBase + (idx === 0 ? count % 11 : 0) + (Math.floor(Math.random() * 5) - 2)
-    })))
-
     setIsSimulating(true)
     const promise = fetch('/api/simulate-traffic', { 
       method: 'POST',
@@ -163,15 +149,19 @@ export default function Dashboard() {
     })
     
     toast.promise(promise, {
-      loading: `Injecting ${count.toLocaleString()} Peak Load Ingress...`,
-      success: `AI Optimized ${count} sessions successfully across all nodes.`,
-      error: 'Simulation failed. Check API connectivity.',
+      loading: `Infrastructure Load Balancing: Distributing ${count.toLocaleString()} Peak Load Ingress...`,
+      success: `LOAD BALANCER SUCCESS: ${count} sessions sharded successfully across all nodes.`,
+      error: 'Infrastructure Alert: Distribution failed. Check network integrity.',
     })
+
+    // Create a fast-refresh interval during simulation to show real growth
+    const fastSync = setInterval(fetchDistributions, 1500)
 
     try {
       await promise
-      setTimeout(fetchDistributions, 3000)
+      await fetchDistributions()
     } finally {
+      clearInterval(fastSync)
       setIsSimulating(false)
     }
   }
